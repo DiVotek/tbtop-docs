@@ -1,6 +1,6 @@
 ---
 title: "Fields"
-description: "The field kinds tbtop/admin ships, the modifiers every field shares, and how relations, media and translatable values work."
+description: "The field kinds tbtop/admin ships, the API every field shares including column spans, and how relations, media and translatable values work."
 ---
 
 A field is a builder you get from the `S` instance passed to `view()`. `$s->text('title')` and `Text::make('title')` produce the same builder; the `$s->` form saves an import. The name you pass is the key the field reads from the form's `record()` and the key its submitted value arrives under in `$ctx->form`.
@@ -42,18 +42,30 @@ The 26th, `$s->inFilter('status')`, exists only for table filter bars. It is cov
 
 `boolean` renders a switch and `checkbox` a checkbox; both submit a boolean. `select` is one kind that changes behaviour with the methods you call: static `options()`, `searchable()`, a server-side `query()`, `creatable()` and `multiple()` all combine.
 
-## Modifiers every field has
+## Common field API
 
-These come from the base `Field` class and work on every kind.
+Every kind extends the base `Field` class, so the methods below work the same on a `text`, a `select` or a `repeater`. Kind-specific methods — `placeholder()`, `maxLength()`, `options()`, `multiple()` — come on top. The complete list with signatures is in [Every field](/docs/api/fields#every-field).
+
+| Group | Methods | What they do |
+|---|---|---|
+| Label and hints | `label()`, `helperText()`, `tooltip()` | Label above the input (defaults to the humanized name), a muted line under it, an info icon beside the label |
+| Value | `default()` | Initial value when `record()` has no key for the field |
+| Validation | `required()`, `rules()`, `nullable()`, `in()`, `notIn()`, `same()`, `different()`, `confirmed()`, `requiredWith()`, `requiredWithout()` | Laravel rules, collected on submit |
+| Conditional | `hiddenIf()`, `disabledIf()`, `requiredIf()`, `markAsRequired()` | React to other fields in the browser; `requiredIf()` also adds the server rule, `markAsRequired()` shows the asterisk without a rule |
+| Server switch | `when()` | Drop the field from the page for this request |
+| Layout | `columnSpan()`, `columnStart()` | Width and start column inside a grid |
+| Locales | `translatable()`, `rulesForLocale()` | Store one value per content locale |
+| Other | `copyable()`, `filterUsing()`, `meta()`, `set()` | Copy button, custom table-filter query, raw node meta and options |
 
 ```php
-$s->grid(['cols' => 2], [
+$s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
     $s->text('sku')->label('SKU')
         ->required()
         ->maxLength(32)
         ->alphaDash()
         ->unique('products', 'sku')->ignore($product->id)
-        ->helperText('Letters, numbers and dashes.'),
+        ->helperText('Letters, numbers and dashes.')
+        ->copyable(),
 
     $s->number('stock')->label('Stock')
         ->integer()->minValue(0)
@@ -71,19 +83,42 @@ $s->grid(['cols' => 2], [
 
     $s->textarea('notes')->label('Internal notes')
         ->tooltip('Never shown to customers.')
-        ->columnSpan(2),
+        ->columnSpan(['md' => 2]),
 ])
 ```
 
-**Labels and hints.** `label()` defaults to the humanized field name. `helperText()` puts a muted line under the input; `tooltip()` adds an info icon next to the label. `text`, `textarea`, `number` and `richtext` also take `placeholder()`.
+**Labels and hints.** `label()` defaults to the humanized field name, and validation messages use it as the attribute name. `text`, `textarea`, `number` and `richtext` also take `placeholder()`.
 
-**Validation.** `required()` marks the field and adds the `required` rule; `rules()` appends any Laravel rules. The fluent helpers — `nullable()`, `minLength()`, `maxLength()`, `minValue()`, `maxValue()`, `between()`, `integer()`, `unique()`, `exists()` and others — append the same rule `rules()` would. A field only offers the helpers that fit its kind, so a `boolean` has no `maxLength()`. `->regex()` is the safe way to add a pattern, and `ignore()` must follow `unique()`, since it rewrites the last `unique` rule and throws otherwise. How the rules run, and the ones that catch people out, are on [Forms](/docs/authoring/forms#validation).
+**Validation.** `required()` marks the field and adds the `required` rule; `rules()` appends any Laravel rules, as a pipe string or an array. Kinds add fluent helpers that fit them — `minLength()`, `maxLength()`, `regex()` and `alphaDash()` on text kinds, `minValue()`, `maxValue()`, `between()` and `integer()` on numbers, `unique()` and `exists()` where a value can live in a table — and each appends the same rule `rules()` would. A `boolean` has no `maxLength()`. `->regex()` is the safe way to add a pattern, and `ignore()` must follow `unique()`, since it rewrites the last `unique` rule and throws otherwise. How the rules run, and the ones that catch people out, are on [Forms](/docs/authoring/forms#validation).
 
 **Defaults.** `default()` fills the value only when the form's `record()` has no key for the field. An explicit key in `record()` always wins, even a `null`.
 
-**Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields).
+**Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields), with the rest of the [dynamic form tools](/docs/authoring/forms#dynamic-forms).
 
-**Layout.** Inside a `grid` or a `section` with `columns`, `columnSpan()` and `columnStart()` take an int from 1 to 8 or a breakpoint array such as `['md' => 2]`.
+**Copy button.** `copyable()` is declared on every field, but at v0.5.1 only the `text` input renders the button. It copies the current value.
+
+**Escape hatches.** `set('key', $value)` writes a raw option into the field's node and `meta()` a raw node meta key; neither is validated, so a typo ships silently. Use them only for a client option that has no fluent method yet, such as an option read by your own [client component](/docs/extending/client-components).
+
+### Column spans
+
+Fields have no width of their own. They are laid out by the nearest grid around them: a `$s->grid()`, a `section` with `columns`, or a tab with `columns`. Directly inside a form or a `stack`, fields sit one per row and a span does nothing.
+
+- **`columnSpan()`** sets how many of the grid's columns the field covers. **`columnStart()`** sets the column it begins in, which leaves the columns before it empty.
+- **An int applies from the `md` breakpoint up.** Below `md`, a grid built with an int `cols` is one column and every field is full width. This matches the grid: `cols => 2` means one column on phones, two from `md`.
+- **A breakpoint array sets each size separately**: `columnSpan(['md' => 2, 'xl' => 1])`. The keys are `sm`, `md`, `lg`, `xl`, the same as a grid's `cols`, and a breakpoint you leave out inherits the smaller one.
+- **Values run from 1 to 8.** Anything else, or an unknown breakpoint key, throws when the page is built. Keep the span no wider than the grid's column count at that breakpoint.
+- **Layout blocks take the same placement** as `colSpan` and `colStart` option keys: `$s->section(['title' => 'Pricing', 'colSpan' => 2], [...])`. A form or a table has no span of its own, so wrap it in a section or stack to place it in a grid.
+
+```php
+$s->section(['title' => 'Address', 'columns' => ['sm' => 1, 'md' => 6]], [
+    $s->text('street')->label('Street')->columnSpan(['md' => 6]),
+    $s->text('postcode')->label('Postcode')->columnSpan(['md' => 2]),
+    $s->text('city')->label('City')->columnSpan(['md' => 4]),
+    $s->text('unit')->label('Unit')->columnSpan(['md' => 2])->columnStart(['md' => 5]),
+]),
+```
+
+How grids, sections and tabs lay out their children is on [Layout](/docs/authoring/layout#grid-columns-and-columnspan); every option is in the [S builder reference](/docs/api/builder).
 
 ## Options
 

@@ -1,6 +1,6 @@
 ---
 title: "Pages"
-description: "How a Page class maps to a route, how view() builds its tree with the S builder, and how a CRUD resource becomes a family of pages."
+description: "How a Page class maps to a route, how view() builds its tree with the S builder, how one page composes any number of forms, tables and display blocks, and how a CRUD resource becomes a family of pages."
 ---
 
 Every screen in a Tabletop panel is one PHP class that extends `Tbtop\Admin\Pages\Page`. The class says where the page lives (`path()`) and what is on it (`view()`). Everything else — title, navigation entry, gate, breadcrumbs, shell layout — is an optional hook with a working default.
@@ -157,7 +157,7 @@ The panel can switch breadcrumbs off with `->breadcrumbs(false)`.
 `view()` receives an `S` instance. It is the factory for everything on the page:
 
 - **Layout** — `stack`, `row`, `flex`, `grid`, `section`, `collapsible`, `aside`, `tabs`.
-- **Display** — `displayText`, `displayAlert`, `displayValue`, `displayKeyValue`, `displayImage`, `markdown`, `displayDivider`.
+- **Display** — `displayText`, `displayAlert`, `displayValue`, `displayKeyValue`, `displayImage`, `displayHtml`, `markdown`, `displayDivider`.
 - **Data** — `form`, `table`, `action`, `stat`, `chart`, `list`, `liveRegion`, `actionsRow`.
 - **Fields** — `$s->text('name')`, `$s->select('status')` and the rest of the [field kinds](/docs/authoring/fields).
 
@@ -175,6 +175,94 @@ $s->grid(['cols' => ['sm' => 1, 'lg' => 3], 'gap' => 6], [
 ```
 
 A `section` also accepts `description`, `icon`, `collapsible`/`collapsed`, `columns` (a grid for its own children), `aside` and a header `action` link. `aside()` is a fixed-width side column meant to sit beside the main content inside a `row()`. Every method and option is listed in the [S builder reference](/docs/api/builder).
+
+## Composing a page
+
+A page is not limited to one form or one table. `view()` can hold any number of forms, tables, stats, charts and display blocks, in any order, nested in grids, sections and tabs. An index can show a second table under the first. An edit page can put the record's form next to tables of related rows.
+
+A supplier page with two stats, the supplier's form and two tables of related rows:
+
+```php
+use App\Models\Product;
+use App\Models\PurchaseOrder;
+use App\Models\Supplier;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+use Tbtop\Admin\Dsl\Actions\FormActions;
+use Tbtop\Admin\Dsl\Color;
+use Tbtop\Admin\Dsl\Column;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+
+public static function path(): string
+{
+    return 'suppliers/{supplier}';
+}
+
+public function view(S $s): Node
+{
+    $supplier = Supplier::findOrFail(request()->route('supplier'));
+
+    return $s->stack([
+        $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
+            $s->stat('Open orders')->value(fn () => PurchaseOrder::query()
+                ->where('supplier_id', $supplier->id)->whereNull('received_at')->count()),
+            $s->stat('Products')->value(fn () => Product::query()
+                ->where('supplier_id', $supplier->id)->count()),
+        ]),
+
+        $s->grid(['cols' => ['sm' => 1, 'lg' => 3], 'gap' => 6], [
+            $s->section(['title' => 'Supplier', 'variant' => 'card'], [
+                $s->form('supplier', [
+                    $s->text('name')->label('Name')->required()->maxLength(200),
+                    $s->text('email')->label('Email')->rules('nullable|email'),
+                    $s->actionsRow([FormActions::save($s)]),
+                ])
+                    ->record($supplier->only(['name', 'email']))
+                    ->onSubmit(function (ActionCtx $ctx) use ($supplier): Effects {
+                        $supplier->update($ctx->form);
+
+                        return Effects::make()->notify('Saved');
+                    }),
+            ]),
+            $s->section(['title' => 'Products', 'variant' => 'card', 'colSpan' => ['lg' => 2]], [
+                $s->table('products')
+                    ->query(fn () => Product::query()->where('supplier_id', $supplier->id))
+                    ->columns([
+                        Column::make('sku')->label('SKU')->searchable(),
+                        Column::make('name')->label('Name')->sortable()->searchable(),
+                        Column::make('stock')->label('Stock')->number(0)->align('right'),
+                    ])
+                    ->defaultSort('name', 'asc'),
+            ]),
+        ]),
+
+        $s->section(['title' => 'Purchase orders'], [
+            $s->table('orders')
+                ->query(fn () => PurchaseOrder::query()->where('supplier_id', $supplier->id))
+                ->columns([
+                    Column::make('number')->label('Number')->searchable(),
+                    Column::make('ordered_on')->label('Ordered')->date('Y-m-d')->sortable(),
+                    Column::make('total_cents')->label('Total')->money('USD')->align('right'),
+                    Column::make('status')->badge(['open' => Color::Warning, 'received' => Color::Success]),
+                ])
+                ->defaultSort('ordered_on', 'desc'),
+        ]),
+    ]);
+}
+```
+
+What keeps the pieces independent:
+
+- **Each piece has its own name and endpoint.** A form submits to `{path}/forms/{name}`, a table loads rows from `{path}/tables/{name}`, an action posts to `{path}/actions/{name}`. The server rebuilds `view()` and finds the piece by that name, so `products` and `orders` run their own queries, and submitting `supplier` validates only that form's fields.
+- **Tables keep separate state.** Sort, search, filters and page number are stored in the URL under the table's name (`t[products][…]`, `t[orders][…]`), so two tables on one page do not overwrite each other, and a reload or a shared link restores both.
+- **Effects can target another table.** `Effects::make()->refreshTable('orders')` refetches that table from any action or form submit on the page. Without a name, `refreshTable()` refreshes the table the action sits in, or every table on the page when the action is outside a table.
+- **Names are unique per kind.** A second `$s->table('orders')` replaces the first, and the same holds for forms, actions, stats and charts.
+- **Spans go on a wrapper.** Forms and tables have no `colSpan` of their own. Put them in a `section`, `stack` or `grid` and set `colSpan`/`colStart` on that, as the Products section does.
+
+Tabs work the same way: each tab of `$s->tabs()` can hold its own form or table.
+
+See it in the demo: the [posts index](https://demo.tbtop.dev/admin/posts) has two tables on one page, plus forms inside its create and edit actions, and the [dashboard](https://demo.tbtop.dev/admin/dashboard) mixes stats, charts and display blocks.
 
 ## CRUD as a family of pages
 

@@ -5,7 +5,7 @@ description: "Build a server-driven table: columns, sorting, search, filters, ta
 
 A table is a block you add to a page with `$s->table('name')`. It needs two things: `columns()` to say what each row shows, and `query()` to say where the rows come from. Everything else — sorting, search, filters, tabs, actions — is opt-in.
 
-The table never ships its rows with the page. The browser fetches them from a page-scoped endpoint, and every sort, search, filter and page change is a new request that re-runs your `query()` closure on the server. The name you give the table is how actions and effects refer to it, so keep it unique on the page.
+The table never ships its rows with the page. The browser fetches them from a page-scoped endpoint, and every sort, search, filter and page change is a new request that re-runs your `query()` closure on the server. The name you give the table is how actions and effects refer to it, so keep it unique on the page. A page can hold any number of tables, next to forms, stats and other blocks; see [Composing a page](/docs/authoring/pages#composing-a-page).
 
 The full method lists are in the [Tables API reference](/docs/api/tables): [`TableBuilder`](/docs/api/tables#tablebuilder), [`Column`](/docs/api/tables#column) and [`Tab`](/docs/api/tables#tab).
 
@@ -247,7 +247,7 @@ The model is loaded through the table's own `query()`, so a row outside that que
 - **Soft deletes.** `softDeletes($s, Order::class)` adds Active / Trashed / All tabs and restore and force-delete row and bulk actions. Call it after your own `tabs()`, `rowActions()` and `bulkActions()`; it merges into them. The three tabs are prepended, so Active becomes the default tab instead of your first one. Pass `['tabs' => false]`, `['rowActions' => false]` or `['bulkActions' => false]` as the third argument to skip a part.
 - **Embedding.** `embedded()` drops the toolbar, filters and pagination footer, for a small table inside a card. `toolbar(false)`, `searchInput(false)` and `columnToggle(false)` hide less.
 - **Empty state.** `emptyState('No orders yet', 'Orders appear here once a customer checks out.', 'package')` replaces the default message.
-- **Several tables per page.** A page may hold any number of tables, each with its own name and query — for example the related rows under a record's edit form.
+- **Several tables per page.** There is no limit of one table per page. Each table has its own name, query, endpoint and URL state (`t[name][…]`), so tables do not interfere with each other — for example the related rows under a record's edit form. [Composing a page](/docs/authoring/pages#composing-a-page) has a full example.
 
 ## Gotchas
 

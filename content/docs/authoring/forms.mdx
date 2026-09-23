@@ -1,9 +1,11 @@
 ---
 title: "Forms"
-description: "Building a form with $s->form(), seeding it with record(), validating with Laravel rules, saving in onSubmit, and showing fields conditionally with hiddenIf, disabledIf and requiredIf."
+description: "Building a form with $s->form(), seeding it with record(), validating with Laravel rules, saving in onSubmit, and making it dynamic with conditions, dependent fields and server-rendered live regions."
 ---
 
 A form is a named group of fields with one server-side submit handler. You declare it inside a page's `view()` with `$s->form()`, give it initial values with `record()`, and handle the validated input in `onSubmit()`. Validation is always Laravel validation on the server; the client only mirrors some rules for faster feedback.
+
+A page can hold any number of forms, next to tables, stats and other blocks. See [Several forms on one page](#several-forms-on-one-page).
 
 ## A complete form
 
@@ -142,6 +144,18 @@ $s->section(['title' => 'Address', 'columns' => 2], [
 
 Fields in a tab that is not open are still part of the form: they submit, and a validation error in one switches to that tab. `$s->unsavedIndicator()` placed next to the Save button shows a small "unsaved changes" hint while the form is dirty.
 
+## Dynamic forms
+
+A form can change while the user fills it in. There are five tools for that, from purely client-side to server-rendered:
+
+| You want | Use | Runs |
+|---|---|---|
+| Hide, disable or require a field depending on another field's value | [`hiddenIf`, `disabledIf`, `requiredIf`](#conditional-fields) | In the browser, no request |
+| A select or relation whose options depend on another field | [`dependsOn()`](/docs/authoring/fields#cascading-pickers-dependson) on that field | Refetches its options when a parent changes |
+| A block whose content is computed in PHP from the current values — a price, a preview, a warning | [A live region](#live-regions) | One request per dependency change |
+| A button that reads the unsaved values and writes new ones into the form | [An action with `needs: ['form']` returning `setFormData()`](#filling-fields-from-the-server) | One request per click |
+| A field that exists only for some users or settings | [`when()`](#removing-a-field-on-the-server) | Once, when the page is built |
+
 ## Conditional fields
 
 Three methods make a field react to the values of other fields in the same form, live, in the browser:
@@ -196,6 +210,81 @@ $s->number('discount')->label('Discount')->when(fn () => auth()->user()->can('gi
 
 A `when(false)` field is dropped before the page is sent: it is not rendered, its rules are not collected, its default does not reach the browser, and endpoints that belong to it (uploads, select searches) answer 404. `hiddenIf` is for reacting to what the user types; `when` is the access boundary.
 
+## Live regions
+
+A live region is a part of the form rendered on the server from the form's current, unsaved values. You name the fields it depends on; when one of them changes, the client posts their values to the page, your closure runs again and the region's content is replaced. No client code is involved.
+
+```php
+use App\Models\ShippingRate;
+use Tbtop\Admin\Dsl\Actions\FormActions;
+use Tbtop\Admin\Dsl\S;
+
+$s->form('shipment', [
+    $s->select('zone')->label('Zone')->required()->options([
+        ['value' => 'domestic', 'label' => 'Domestic'],
+        ['value' => 'international', 'label' => 'International'],
+    ]),
+    $s->number('weight_kg')->label('Weight, kg')->step('0.1')->minValue(0),
+
+    $s->liveRegion('quote')
+        ->dependsOn(['zone', 'weight_kg'])
+        ->render(function (array $deps, S $r): array {
+            $rate = ShippingRate::query()->where('zone', $deps['zone'] ?? '')->first();
+            if ($rate === null) {
+                return [$r->displayAlert('Pick a zone to see the price.')->color('info')];
+            }
+            $kg = max(0.0, (float) ($deps['weight_kg'] ?? 0));
+
+            return [$r->displayValue($rate->base_cents + (int) round($rate->per_kg_cents * $kg))->money('USD')];
+        }),
+
+    $s->actionsRow([FormActions::save($s)]),
+]);
+```
+
+What to know before using one:
+
+- **`$deps` holds strings, and only non-empty declared fields.** Cast numbers yourself and always read with a fallback, as above.
+- **Return display nodes only.** Text, alerts, key-value lists, display values and layout are fine; a field throws, because a form cannot change its set of fields after rendering.
+- **Every change is a request, with no debounce.** Prefer selects, numbers, toggles and dates as dependencies over free text.
+- **It is not validation.** A warning in a region is fine, but the rule that enforces it belongs in the field's `rules()` or in `onSubmit`.
+
+The first render runs on the server with the `record()` values, so an edit form opens with the region filled in. The full contract — how `$deps` is filtered, repeater limits, access with `when()` — is in [Live regions](/docs/extending/live-regions).
+
+## Filling fields from the server
+
+An action inside the form can read the unsaved values and write new ones back. Declare `needs: ['form']` and return `setFormData()`; the listed top-level fields are replaced and the form stays dirty until the user saves. `PostcodeDirectory` stands for your own lookup:
+
+```php
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+
+$s->text('postcode')->label('Postcode'),
+$s->text('city')->label('City'),
+$s->action('lookup-city')->label('Find city')
+    ->handle(function (ActionCtx $ctx): Effects {
+        $city = PostcodeDirectory::cityFor((string) ($ctx->form['postcode'] ?? ''));
+
+        return $city === null
+            ? Effects::make()->notify('Unknown postcode', 'warning')
+            : Effects::make()->setFormData(['city' => $city]);
+    }, needs: ['form'])
+    ->withoutValidation(),
+```
+
+With `needs: ['form']` the values are validated against the form's rules before the handler runs; `withoutValidation()` lets the button work while other fields are still empty. See [Server actions](/docs/authoring/actions#server-actions) and [Effects](/docs/authoring/actions#effects).
+
+## Several forms on one page
+
+A page is not limited to one form. Each `$s->form()` call registers its own form, with its own record, rules, submit endpoint and unsaved-changes guard, and forms sit freely next to tables, stats and display blocks. Submitting one form validates and sends only that form's fields.
+
+- **Give each form a unique name.** A second `$s->form('settings', …)` replaces the first.
+- **Put each form's submit button inside that form.** A `submit()` action sends the values of the form it is rendered in.
+- **Only one form should own <kbd>Mod</kbd>+<kbd>S</kbd>.** `FormActions::save()` binds that shortcut, and when several buttons bind it the one mounted last wins. For the other forms use a plain submit button: `$s->action('save-address')->label('Save')->color('primary')->submit()`.
+- **Refresh a table after a submit** with `Effects::make()->refreshTable('name')`, for example a quick-add form above a list.
+
+[Composing a page](/docs/authoring/pages#composing-a-page) has a full example with a form and two tables on one page.
+
 ## Leaving with unsaved changes
 
 A form warns before the user navigates away from unsaved edits. Turn that off for one form with `->guardUnsaved(false)` — sensible for a small form inside a modal — or for the whole panel with `->unsavedGuard(false)` on the panel config.
@@ -204,5 +293,5 @@ A form warns before the user navigates away from unsaved edits. Turn that off fo
 
 - A button that runs server code with the form's current, unsaved values declares `needs: ['form']`; those values are validated against the form's rules first. See [Actions](/docs/authoring/actions).
 - Forms in modals and slide-overs — `CreateAction`, `EditAction` — are also covered in [Actions](/docs/authoring/actions).
-- Content that recomputes on the server as the user types, such as a price summary, is a [live region](/docs/extending/live-regions).
+- The full live-region contract is on [Live regions](/docs/extending/live-regions).
 - Every `FormBuilder` method is listed in the [actions reference](/docs/api/actions#formbuilder).
