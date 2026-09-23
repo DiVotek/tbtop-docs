@@ -11,6 +11,12 @@ export const gitConfig = {
 	branch: "main",
 };
 
+/**
+ * The tbtop/admin release these docs describe. The only place this pins —
+ * bump it here, then rerun `npm run sync:api` to refresh content/docs/api.
+ */
+export const PINNED_TAG = "v0.5.1";
+
 const getContentUrl = createGetUrl(docsContentRoute);
 
 export function getPageMarkdownUrl(page: { slugs: string[]; locale?: string }) {
