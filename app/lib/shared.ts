@@ -1,14 +1,13 @@
 import { createGetUrl } from "fumadocs-core/source";
 
-export const appName = "React Router";
+export const appName = "Tabletop Docs";
 export const docsRoute = "/docs";
 export const docsImageRoute = "/og/docs";
 export const docsContentRoute = "/llms.mdx/docs";
 
-// fill this with your actual GitHub info, for example:
 export const gitConfig = {
-	user: "fuma-nama",
-	repo: "fumadocs",
+	user: "DiVotek",
+	repo: "tbtop",
 	branch: "main",
 };
 
