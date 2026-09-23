@@ -146,11 +146,7 @@
 /* Inline code takes --color-fd-muted, which equals the table's card surface in
    dark mode; an accent tint keeps method names readable inside table cells. */
 .prose :where(table) :where(code):not(pre code) {
-	background-color: color-mix(
-		in oklab,
-		var(--color-fd-primary) 12%,
-		var(--color-fd-card)
-	);
+	background-color: color-mix(in oklab, var(--color-fd-primary) 12%, var(--color-fd-card));
 	border-color: color-mix(in oklab, var(--color-fd-primary) 28%, transparent);
 }
 
