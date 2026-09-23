@@ -17,6 +17,12 @@ export const gitConfig = {
  */
 export const PINNED_TAG = "v0.5.1";
 
+/**
+ * The tbtop/spatie-media-library release content/docs/packages/media-library.mdx
+ * describes. The package releases independently of tbtop/admin.
+ */
+export const MEDIA_LIBRARY_TAG = "v0.1.2";
+
 // Own Umami site, not tbtop.dev's; `domains` keeps dev and previews out of stats.
 export const umami = {
 	src: "https://analytics.divotek.com/script.js",

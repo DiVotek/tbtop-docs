@@ -259,6 +259,8 @@ With `multiple()` the value is an array of ids in the order shown, so the first 
 
 Pick `upload` when the file belongs to one record and nothing else. Pick `media` when editors should reuse files across records.
 
+If the model already keeps its images in spatie/laravel-medialibrary collections, the separate [Media library](/docs/packages/media-library) package adds a picker bound to one record's collection.
+
 ## Translatable fields
 
 A translatable field stores one value per content locale. The locales are global, set in `config/tbtop-admin.php`:
