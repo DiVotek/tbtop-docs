@@ -1,5 +1,234 @@
 ---
 title: "Contracts"
+description: "The JSON shape PHP sends to the React client, where it is defined, and what an extension has to keep stable."
 ---
 
-This page is being written.
+The PHP DSL and the React client never share code. They share a **wire format**: PHP
+serializes each page to a JSON tree, and the client interprets that tree. Everything on
+the [client components](/docs/extending/client-components) and
+[live regions](/docs/extending/live-regions) pages works because both sides agree on this
+format. This page describes it from the point of view of someone extending the admin, not
+someone changing the package itself.
+
+## Where the contract is written down
+
+The format is defined in one JSON Schema file in the
+[tbtop repository](https://github.com/DiVotek/tbtop): `packages/contracts/structure.schema.json`
+(JSON Schema draft 2020-12, grammar version `1`). The Composer package includes it, so
+after `composer require tbtop/admin` it sits at
+`vendor/tbtop/admin/packages/contracts/structure.schema.json`, with the kitchen-sink
+fixture beside it in `fixtures/`, and always matches the version you installed. The npm
+package `@tbtop/inertia-admin` does not include it. Neither package loads the schema or
+validates your pages against it at runtime.
+
+Inside the repository, three things describe the same format and are kept in step:
+
+- the PHP builders, which produce the JSON;
+- the JSON Schema, which says what valid JSON looks like;
+- a hand-written partial copy of the schema in the client's own tests.
+
+A fixture, `packages/contracts/fixtures/kitchen-sink.json`, ties them together. The PHP
+test suite builds a page that uses every built-in node kind, checks the output against
+the schema and against the committed fixture, and the client test suite renders the same
+fixture. A change to the wire format has to update all of them in the same change. You
+don't run these gates in your app. They are why a released version's PHP and client
+agree with each other.
+
+## Versions
+
+`tbtop/admin` (Composer) and `@tbtop/inertia-admin` (npm) are released together from one
+tag and always carry the same version number. Install the same version of both, and
+upgrade them together:
+
+```bash
+composer require tbtop/admin:0.5.1
+npm install @tbtop/inertia-admin@0.5.1
+```
+
+A PHP package from one release with a client from another can disagree about option
+names or node shapes, and the symptoms show up only in the browser.
+
+For the client's public exports, the package states that component props and variant
+names follow semver, while the Tailwind class strings inside those components do not.
+Don't target the package's internal class names from your own CSS.
+
+## The page payload
+
+A Tabletop page is an Inertia response for the component `admin/page`. Its props are:
+
+| Prop | Content |
+|---|---|
+| `slug`, `title`, `layout` | Page identity. `layout` is `admin` or `center` |
+| `structure` | The node tree, described below |
+| `data` | Initial values for each form, keyed by form name |
+| `subtitle`, `headerActions` | Present only when the page defines them |
+| `breadcrumbs` | Present when the panel has breadcrumbs enabled |
+
+Every admin response also carries a shared `tbtop` prop with panel-wide data: navigation,
+the user menu, chrome, locales and translated messages.
+
+Your `resources/js/admin.tsx` must resolve the page name `admin/page` to the package's
+`AdminPage` component, and `admin/error` to `AdminErrorPage`. The file `admin:install`
+publishes handles only `admin/page`; without the second branch every panel 404 (an unknown
+URL under the prefix, or a `findOrFail()` that misses inside a page) throws
+`[admin] No component found for page: admin/error` in the browser. Follow
+[Install](/docs/getting-started/install#render-the-404-page) to add it.
+
+## The node envelope
+
+Every node in `structure` is an object with `kind`, `options` and `meta`, plus an optional
+`name`. No other top-level keys are allowed:
+
+```json
+{
+  "kind": "rating",
+  "name": "quality",
+  "options": {
+    "label": "Quality",
+    "max": 5,
+    "constraints": { "integer": true, "min": 1, "max": 5 }
+  },
+  "meta": {}
+}
+```
+
+This is exactly what the `Rating` field from
+[Client components](/docs/extending/client-components#a-custom-field) emits for
+`Rating::make('quality')->label('Quality')->max(5)->rules('nullable|integer|min:1|max:5')`.
+
+- **`kind`** is a non-empty string. It is the only thing the client uses to pick a
+  component. The schema does not list the allowed kinds, on purpose: that is what lets you
+  add your own. It has specific rules for the built-in kinds and checks any other kind
+  against the base shape only.
+- **`name`** is present on fields, forms, tables, actions, live regions and anything else
+  the server needs to find again. For a field it is the key the value is stored and
+  submitted under.
+- **`options`** holds everything else. For your own kinds it is an open object: whatever
+  you pass to `set()` or to `new Node($kind, $options)` arrives in the component's
+  `options` prop unchanged. Field rules are also translated into a `constraints` object,
+  which the client uses for quick checks on blur. The server still validates every
+  submission with the full Laravel rules.
+- **`meta`** holds `id` (used as the input's DOM id) and the conditions `hiddenIf`,
+  `disabledIf` and `requiredIf`. Conditions are small JSON expressions (`eq`, `in`,
+  `truthy`, `all`, `any`...) that the client evaluates against the form's values.
+
+### Option keys that mean the same thing on every kind
+
+Some option keys are typed for every node, whatever its kind. The client also treats
+several of them specially. Use them only with this meaning:
+
+| Key | Meaning |
+|---|---|
+| `children`, `fields`, `params`, `filters`, `rowActions`, `bulkActions` | Lists of child nodes |
+| `prefix`, `suffix` | A single child node |
+| `tabs` | Tab definitions |
+| `label`, `helperText`, `tooltip`, `class`, `mask` | Strings |
+| `colSpan`, `colStart` | Grid placement: an integer or a per-breakpoint object |
+| `constraints`, `copyable`, `create`, `dependsOn`, `keepValue`, `whenParentEmpty`, `collapsed` | Field behaviour with fixed shapes |
+
+Don't add an option called `name` either. Before rendering, the client copies the node's
+`name` into its options, and a field component reads its name from there. An option with
+that key would replace the field's real name.
+
+## Server endpoints are addressed by name
+
+A page's forms, actions, tables, live regions and some fields have their own endpoints
+under the page's URL. The name you give them in PHP is part of the path:
+
+| Endpoint | Path |
+|---|---|
+| Form submit | `POST {page-path}/forms/{form}` |
+| Action | `POST {page-path}/actions/{action}` |
+| Table rows | `GET {page-path}/tables/{table}` |
+| Live region | `POST {page-path}/live-region/{region}` |
+| Upload | `POST {page-path}/uploads/{field}` |
+
+On each of these requests the server builds the page again and looks the name up in the
+new tree. Server closures (`handle()`, `onSubmit()`, a region's `render()`, a table's
+`query()`) are never sent to the browser. They are found again by name. This has two
+consequences:
+
+- A name must mean the same thing on every request. Don't build names from values that
+  change between the page load and the next click.
+- A node removed with `when(false)` has no endpoint: the request answers 404.
+
+## Effects are a closed set
+
+When an action or a form submit finishes, the server answers with a list of effects for
+the client to run. There are exactly eight:
+
+| Effect | What it does |
+|---|---|
+| `notify` | Show a toast (`message`, optional `level`) |
+| `redirect` | Go to `href` |
+| `refreshTable` | Reload the named table, or the nearest one |
+| `resetForm` | Reset the nearest form to its baseline values |
+| `closeModal` | Close the open modal |
+| `haltModal` | Keep the modal open and show a message |
+| `copyToClipboard` | Copy `text` |
+| `setFormData` | Set top-level field values in the nearest form from `data` |
+
+You build them with `Effects::make()` in PHP (see
+[Effects](/docs/api/actions#effects) in the API reference). You cannot add a new effect from
+an application. For browser behaviour outside this list, use a
+[custom action handler](/docs/extending/client-components#a-custom-action-handler), or
+return a redirect.
+
+## What your extension must keep stable
+
+Everything in your own code that crosses the wire is a small contract of its own. Nothing
+checks it at build time, so treat these as the places to look when something breaks:
+
+- **Kind strings.** The string in PHP `kind()` or `new Node()` and the string in
+  `defineFieldClient()` or `registerBlock()` must be identical. Renaming one side leaves
+  `<unknown block: ...>` on the page.
+- **Option keys and their types.** The keys your PHP class writes with `set()` are the
+  props your React component reads. Keep a TypeScript interface for them next to the
+  component, and change both in the same commit.
+- **The field value shape.** What your form component passes to `onChange` (or returns from
+  `serialize`) is what your `rules()` validate and what your handler stores. What your model
+  returns for that key is what the component receives back on the next edit.
+- **Custom action handler names and their `params`.** A missing handler fails only when
+  someone clicks the button.
+- **Icon names** used in PHP. Every Lucide icon resolves by its lucide.dev kebab-case
+  name without registration; any other name needs a matching `registerIcon()` call.
+- **Names of forms, actions, tables and live regions**, as described above.
+
+## Testing an extension
+
+Because the client is the only thing that reads the wire, a server-side test can check
+your half of the contract directly. Request the page and assert on the `structure` prop
+with Laravel's Inertia testing helpers:
+
+```php
+use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
+
+public function test_product_form_carries_the_rating_field(): void
+{
+    $this->actingAs(User::factory()->create())
+        ->get('/admin/products/new')
+        ->assertOk()
+        ->assertInertia(function (Assert $page) {
+            $page->component('admin/page', false);
+
+            $structure = $page->toArray()['props']['structure'];
+            $node = $this->findNodeByName($structure, 'quality');
+
+            $this->assertSame('rating', $node['kind'] ?? null);
+            $this->assertSame(5, $node['options']['max'] ?? null);
+        });
+}
+```
+
+`findNodeByName()` is a small helper you write yourself: walk `options.children`,
+`options.fields` and each tab's `body` until a node with that `name` turns up. Passing
+`false` as the second argument to `component()` skips Inertia's check that a matching page
+file exists on disk, since `admin/page` lives in the npm package.
+
+For stricter checks, you can validate the `structure` prop against
+`vendor/tbtop/admin/packages/contracts/structure.schema.json` with any JSON Schema library
+for PHP. That
+catches a malformed envelope or a wrong type on one of the shared option keys, but it
+cannot tell whether a client component exists for your kind. Only rendering the page does
+that.

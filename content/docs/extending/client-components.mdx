@@ -1,5 +1,357 @@
 ---
 title: "Client components"
+description: "Write your own React fields, blocks and action handlers and use them from PHP pages by name."
 ---
 
-This page is being written.
+A Tabletop page is a tree of nodes. PHP builds the tree, serializes it to JSON and sends it
+to the browser as Inertia props. The React client walks the tree and, for each node, looks
+up a component by the node's `kind` string in a registry. The built-in kinds (`text`,
+`select`, `section`, `table`...) are registered by the package. You can register your own
+the same way, without forking either package.
+
+The match between the two sides is only the `kind` string. PHP emits
+`{"kind": "rating", ...}` and the client renders whatever is registered under `"rating"`.
+If nothing is registered under that name, the client renders a small red placeholder
+(`<unknown block: rating>`) and logs a console warning once.
+
+There are four extension points:
+
+| You want | PHP side | Client side |
+|---|---|---|
+| A new input that stores a value | A `Field` subclass, registered with `S::register()` | `defineFieldClient()` |
+| A custom display widget | `new Node('yourKind', [...options])` | `registerBlock()` |
+| An action that runs browser code | `$s->action('x')->custom('handlerName', [...])` | `defineCustomAction()` |
+| An extra icon name | Use the name in `->icon('name')` or `nav()` | `registerIcon()` |
+
+## Where client registrations go
+
+`php artisan admin:install` publishes `resources/js/admin.tsx`, the entry file for the admin
+panel. Register your components there, at module top level, **before**
+`createInertiaApp()` runs. The registry has to be filled before the first page renders.
+
+```tsx title="resources/js/admin.tsx"
+import { createInertiaApp } from "@inertiajs/react";
+import { defineFieldClient, registerBlock } from "@tbtop/inertia-admin";
+import { createRoot } from "react-dom/client";
+import { RatingCell, RatingForm } from "./admin/rating";
+import { StockMeter } from "./admin/stockMeter";
+
+defineFieldClient<"rating", number>("rating", { form: RatingForm, cell: RatingCell });
+
+registerBlock<"stockMeter", { stock: number; capacity: number }>({
+	kind: "stockMeter",
+	behavior: "leaf",
+	render: StockMeter,
+});
+
+createInertiaApp({
+	// ...the rest of the published file, unchanged
+});
+```
+
+## A custom field
+
+A field has three parts: a PHP builder that says what the field is and which options it
+carries, a React component for the form, and a React component for table cells. The
+example below is a numeric rating. The public demo ships the same kind of field.
+
+### PHP: the builder
+
+Extend `Tbtop\Admin\Dsl\Fields\Field` and return the wire kind from `kind()`. Add a fluent
+method for each option. `set($key, $value)` writes the key into the node's `options`, and
+that is what the React component will receive.
+
+```php title="app/Admin/Fields/Rating.php"
+<?php
+
+namespace App\Admin\Fields;
+
+use Tbtop\Admin\Dsl\Fields\Field;
+
+final class Rating extends Field
+{
+    protected function kind(): string
+    {
+        return 'rating';
+    }
+
+    /** Highest selectable value. Ships as options.max. */
+    public function max(int $max): static
+    {
+        return $this->set('max', $max);
+    }
+}
+```
+
+Register the kind in a service provider so `$s->rating(...)` resolves:
+
+```php title="app/Providers/AppServiceProvider.php"
+use App\Admin\Fields\Rating;
+use Tbtop\Admin\Dsl\S;
+
+public function boot(): void
+{
+    S::register('rating', Rating::class);
+}
+```
+
+Your class inherits everything every field has: `label()`, `helperText()`, `required()`,
+`rules()`, `default()`, `hiddenIf()`, `disabledIf()`, `columnSpan()` and the rest (see
+[Every field](/docs/api/fields#every-field) in the API reference). Use it in a form like
+any built-in field:
+
+```php
+$s->form('product', [
+    $s->text('name')->required(),
+    Rating::make('quality')->label('Quality')->max(5)->rules('nullable|integer|min:1|max:5'),
+])
+```
+
+`$s->rating('quality')` works too once the kind is registered. Static analysis only sees
+the base `Field` type on the magic call, so prefer `Rating::make()` when you chain your own
+methods such as `max()`.
+
+### React: form and cell
+
+`defineFieldClient` takes two components. `form` renders the input inside a form; `cell`
+renders the stored value in a table. The client picks the right one for each place, so
+you never check where you are rendered.
+
+```tsx title="resources/js/admin/rating.tsx"
+import { type FieldCellProps, type FieldFormProps, Input } from "@tbtop/inertia-admin";
+
+export function RatingForm({
+	id,
+	name,
+	value,
+	onChange,
+	onBlur,
+	disabled,
+	invalid,
+	describedBy,
+	options,
+}: FieldFormProps<number>) {
+	const max = Number(options?.max ?? 5);
+	return (
+		<Input
+			id={id}
+			name={name}
+			type="number"
+			min={1}
+			max={max}
+			value={value ?? ""}
+			onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+			onBlur={onBlur}
+			disabled={disabled}
+			aria-invalid={invalid}
+			aria-describedby={describedBy}
+		/>
+	);
+}
+
+export function RatingCell({ value }: FieldCellProps<number>) {
+	return <span>{value ?? "–"}</span>;
+}
+```
+
+The form wraps your component in the standard field chrome: label, required marker,
+tooltip, helper text and the validation error. Your component only draws the control.
+Spread `invalid` onto the control as `aria-invalid` and `describedBy` as
+`aria-describedby`. The package's input primitives take their error styling from
+`aria-invalid`, and screen readers use `aria-describedby` to announce the error.
+
+What your component passes to `onChange` is the field's value. It is sent with the form on
+submit, validated by the field's Laravel `rules()`, and reaches your handler in
+`$ctx->form['quality']`. If the value needs reshaping before it is sent, give
+`defineFieldClient` a `serialize(value, options)` function. The client applies it to the
+field's value when the form is submitted and when an action sends the form's values.
+
+To show the field in a table, give a column the same kind:
+
+```php
+use Tbtop\Admin\Dsl\Column;
+
+Column::make('quality')->kind('rating')->label('Quality'),
+```
+
+The table then renders `RatingCell` with the row's value.
+
+<Callout type="info" title="See it in the demo">
+The rating field is in the **Publishing** section of the
+[new post form](https://demo.tbtop.dev/admin/posts/new). It stays disabled until
+**Published** is switched on.
+</Callout>
+
+## A custom block
+
+A block is a node that does not hold a form value: a chart you draw yourself, a status
+widget, a multi-step flow that calls its own JSON endpoints. There is no builder class to
+extend. Create the node directly with `Tbtop\Admin\Dsl\Node`. Wrapping it in a small
+factory class keeps the kind string and the option keys in one place:
+
+```php title="app/Admin/Blocks/StockMeter.php"
+<?php
+
+namespace App\Admin\Blocks;
+
+use App\Models\Product;
+use Tbtop\Admin\Dsl\Node;
+
+final class StockMeter
+{
+    public static function for(Product $product): Node
+    {
+        return new Node('stockMeter', [
+            'stock' => $product->stock,
+            'capacity' => $product->warehouse_capacity,
+        ]);
+    }
+}
+```
+
+Put it anywhere a node goes, for example `$s->stack([..., StockMeter::for($product)])`.
+On the client, the component receives the options as `options`:
+
+```tsx title="resources/js/admin/stockMeter.tsx"
+import { Progress, type RenderProps } from "@tbtop/inertia-admin";
+
+interface StockMeterOptions {
+	stock: number;
+	capacity: number;
+}
+
+export function StockMeter({ options }: RenderProps<StockMeterOptions>) {
+	const percent = options.capacity > 0 ? (options.stock / options.capacity) * 100 : 0;
+	return (
+		<div>
+			<p>
+				{options.stock} of {options.capacity} in stock
+			</p>
+			<Progress value={percent} />
+		</div>
+	);
+}
+```
+
+Register it with `registerBlock` (shown above) or with the shorter
+`defineBlock("stockMeter", { behavior: "leaf", render: StockMeter })`. `behavior` is one of:
+
+- `"leaf"`: renders only its own options.
+- `"container"`: renders child nodes. Pass them from PHP under the `children` option. The
+  component gets them as `children` and draws each one with `renderChild(child)`. Fields
+  placed inside a container that sits in a form are still bound to that form and still
+  validated.
+- `"field"`: holds a form value. Use `defineFieldClient` for these; it sets this for you.
+
+`RenderProps` also carries `meta` (the node's `id`, `hiddenIf` and similar) and `ctx`, which
+you rarely need in a block.
+
+For a block that fetches data, `useClient()` gives you the package's HTTP client
+(`get`, `post`, `patch`, `delete`, `upload`). Pass the URLs in as options instead of
+hard-coding them in TypeScript, so PHP stays the single source of routes.
+
+<Callout type="info" title="See it in the demo">
+The "Data resets in" countdown on the [demo login page](https://demo.tbtop.dev/admin/login),
+and in the header of every demo admin page after you sign in, is a custom leaf block: PHP
+computes the next reset time, and the React component only counts down to it.
+</Callout>
+
+### Blocks that read the form
+
+A block placed inside a form can read the form's live, unsaved values with
+`useNearestFormController()`. It returns `null` outside a form. Inside one it returns
+`data` (current values), `initial`, `isDirty`, `isValid`, `changedFields`, `fieldErrors`,
+and the methods `set(field, value)`, `reset()` and `setFieldError()`.
+
+```tsx
+import { type RenderProps, useNearestFormController } from "@tbtop/inertia-admin";
+
+export function LineTotal({ options }: RenderProps<{ currency: string }>) {
+	const form = useNearestFormController();
+	const qty = Number(form?.data.quantity ?? 0);
+	const price = Number(form?.data.unit_price ?? 0);
+	return (
+		<output>
+			{(qty * price).toFixed(2)} {options.currency}
+		</output>
+	);
+}
+```
+
+This updates on every keystroke with no request to the server. Treat it as a preview
+only: compute the real total again in PHP when the form is submitted. When the computed
+content needs the database or server-side rules, use a
+[live region](/docs/extending/live-regions) instead.
+
+## A custom action handler
+
+An action's `custom()` spec runs a function you register in the browser instead of a
+server closure. Use it for browser-only work such as starting a file download, opening a
+window or writing to local storage.
+
+```php
+$s->action('exportCsv')
+    ->label('Export CSV')
+    ->custom('download', ['url' => route('orders.export')]),
+```
+
+```tsx
+import { defineCustomAction } from "@tbtop/inertia-admin";
+
+defineCustomAction("download", (_ctx, params) => {
+	window.location.assign(String(params.url));
+});
+```
+
+`orders.export` is a named route in your app. The params array is passed to the handler
+unchanged. The handler receives the action context (`client`, `notify`, `navigate`, route `params`,
+and `form`, `table` or `row` when the action has one) and the `params` array. If no handler is registered under the name, nothing fails at page load: the
+action throws when it is clicked. See [`custom()`](/docs/api/actions#actionbuilder) in the
+API reference and [Actions](/docs/authoring/actions) for the other action types.
+
+## Icons
+
+Icon names in the DSL (`->icon('truck')`, the `icon` key of a page's `nav()`) resolve
+against the client's icon registry. Every icon that `lucide-react` ships is already there
+under its kebab-case name from [lucide.dev/icons](https://lucide.dev/icons) (`truck`,
+`memory-stick`, `hard-drive`), so `->icon('truck')` works with no client code.
+
+Call `registerIcon()` only for a name Lucide doesn't have: an alias, your own icon
+component, or an override of a built-in name. Register at startup, before the app mounts:
+
+```tsx
+import { registerIcon } from "@tbtop/inertia-admin";
+import { Truck } from "lucide-react";
+
+registerIcon("shipping", Truck); // alias: ->icon('shipping') now draws a truck
+```
+
+A component of your own works too; `registerIcon()` takes it typed as `LucideIcon`.
+
+## Gotchas
+
+- **Both halves, same string.** A kind registered only in PHP renders as
+  `<unknown block: ...>`. A kind registered only on the client is never emitted. Nothing
+  checks the match at build time, so open the page after adding a kind.
+- **A custom field must be a `Field` subclass, not a raw `Node`.** Validation rules are
+  collected from field builders. A `new Node('rating', [], 'quality')` inside a form
+  renders as an input, but because `rating` is registered with `S::register()`, the
+  submit fails with an `InvalidArgumentException` ("was serialized with ->toNode() before
+  validation could read it"). If the kind were not registered in PHP, the value would be
+  dropped from `$ctx->form` without any error. Either way, pass the `Field` builder, never
+  a raw `Node` or `->toNode()`.
+- **Pick kind names that don't collide.** A field kind that matches a method on `S`
+  (`section`, `table`, `form`...) is unreachable through `$s->...`, and overriding a
+  built-in kind is unsupported. For block kinds, a prefix such as `app:` keeps you clear
+  of future built-ins.
+- **Values arrive as the record stores them.** Your form component gets whatever the
+  form's `record()` holds for that key. A Laravel `decimal` cast, for example, arrives as a
+  string such as `"4.50"`, not a number. Normalise it in the component.
+- **Cells don't get the field's options.** A table cell receives the value, and the
+  column's choice list for editable select-like columns, but not the options you set on
+  the form field. Keep cell rendering independent of `max` and similar options.
+- **Reserved option keys.** `children`, `fields`, `prefix` and `suffix` hold child nodes
+  on every kind. `colSpan` and `colStart` control grid placement. Don't reuse these names
+  for your own data. See [Contracts](/docs/extending/contracts).
+- **Client code is not a security boundary.** Anything a custom component computes or
+  posts has to be validated again in PHP.
