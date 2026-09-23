@@ -1,0 +1,328 @@
+---
+title: "Layout and content blocks"
+description: "The S builder's structural blocks (stack, row, flex, grid, section, collapsible, aside, tabs) and content blocks (text, alerts, values, HTML, markdown), how grid columns and columnSpan interact, and a composed page."
+---
+
+A page's `view()` returns one node tree. Structural blocks arrange other nodes; content blocks show something read-only. Forms, tables, stats, charts and lists are nodes like any other, so they go anywhere in the tree: two tables side by side, a form inside a tab next to a chart, a table inside a card section. There is no fixed page type and no limit on how many of each a page holds; the one rule is that each form, table, action, stat and chart name is unique per page ([Pages](/docs/authoring/pages#how-a-page-runs)).
+
+This page covers every structural and content block `S` has at v0.5.1. Exhaustive signatures are in the [S builder reference](/docs/api/builder) and the [blocks reference](/docs/api/blocks).
+
+## Options are validated
+
+`stack`, `row`, `grid`, `section`, `collapsible`, `aside` and `tabs` take an options array. An unknown key throws an `InvalidArgumentException` naming the allowed keys, so a typo fails on the first request instead of rendering wrong. `flex` takes named arguments instead, and `actionsRow` reads only `variant`.
+
+Every structural block except `flex` also accepts the node meta keys in the same array: `id`, `hidden`, `disabled`, `hiddenIf`, `disabledIf`.
+
+## Stacks, rows and flex
+
+| Block | Renders | Options |
+|---|---|---|
+| `stack(array $children, array $opts = [])` | Vertical column | `gap` (0-12, default 4), `class`, `colSpan`, `colStart` |
+| `row(array $children, array $opts = [])` | Horizontal row, no wrapping | `gap` (0-12, default 2), `class`, `colSpan`, `colStart` |
+| `flex($children, direction:, justify:, align:, gap:, wrap:, variant:, class:)` | Flex container with explicit alignment | `direction` `'row'`\|`'col'`; `justify` `start`\|`center`\|`end`\|`between`\|`around`\|`evenly`; `align` `start`\|`center`\|`end`\|`stretch`\|`baseline`; `gap` 0-12; `wrap` bool; `variant: 'card'` |
+
+`stack` is the usual root of `view()`. `row` never wraps, so keep it for a few short items; use `flex(..., wrap: true)` or a `grid` when the content has to reflow on a phone.
+
+`flex` with `variant: 'card'` draws a compact bordered strip, which suits a toolbar. `spacer()` pushes whatever follows it to the far edge. A save bar placed inside a form:
+
+```php
+$s->flex([
+    $s->displayText('Draft')->variant('muted'),
+    $s->unsavedIndicator(),
+    $s->spacer(),
+    FormActions::save($s),
+], align: 'center', variant: 'card'),
+```
+
+`unsavedIndicator()` shows a hint while the nearest enclosing form has unsaved changes and renders nothing otherwise.
+
+## Grid
+
+```php
+$s->grid(['cols' => ['sm' => 2, 'lg' => 4], 'gap' => 6], [
+    $s->stat('Orders')->value(fn () => Order::count()),
+    $s->stat('Pending')->value(fn () => Order::where('status', 'pending')->count()),
+    $s->stat('Paid')->value(fn () => Order::where('status', 'paid')->count()),
+    $s->stat('Customers')->value(fn () => Customer::count()),
+]),
+```
+
+`cols` takes two shapes:
+
+- **An int from 1 to 8.** One column below the `md` breakpoint (768px), that many from `md` up. `['cols' => 4]` is the usual stats row.
+- **A breakpoint map** with any of `sm`, `md`, `lg`, `xl`, each 1 to 8. Below the smallest key you give, the grid has one column; each key holds until a larger one overrides it.
+
+`gap` is 0-12 on Tailwind's spacing scale (default 4). Without `cols` a grid has one column.
+
+## Grid columns and columnSpan
+
+A child spans columns by carrying a placement. Fields use fluent methods; every structural block takes option keys:
+
+```php
+$s->text('street')->columnSpan(2)                  // a field
+$s->stack([...], ['colSpan' => 2, 'colStart' => 1]) // a structural block
+```
+
+Both take the same shape as `cols`: an int from 1 to 8 or a breakpoint map. Values outside 1-8 or unknown breakpoints throw.
+
+How the two interact:
+
+- **Placement only works in a grid parent.** Three things render a CSS grid: `grid()`, a `section` with `columns`, and a tab with `columns`. Everywhere else, including directly inside a `form`, a `stack` or a `section` without `columns`, the children stack vertically and `columnSpan` has no effect. To put fields in columns inside a form, wrap them in a `grid` or a `section` with `columns`.
+- **An int span starts at `md`.** `columnSpan(2)` spans two columns from 768px up and one column below, which matches an int `cols`. For a map, each key applies from its breakpoint up.
+- **Match the breakpoints.** With `'cols' => ['lg' => 3]` the grid has one column until `lg`, but an int `colSpan => 2` already applies at `md`. A span wider than the grid adds an extra column and pushes content off the edge. Use `'colSpan' => ['lg' => 2]` there.
+- **Nodes without a placement method.** Stats, tables, charts and lists have no `columnSpan()`. Wrap one in `stack([...], ['colSpan' => 2])` to span it.
+
+```php
+$s->grid(['cols' => ['md' => 2, 'lg' => 3]], [
+    $s->stack([$ordersTable], ['colSpan' => ['lg' => 2]]),
+    $s->section(['title' => 'Latest activity', 'variant' => 'card'], [$activityList]),
+]),
+```
+
+## Sections
+
+A section groups children under an optional header.
+
+| Option | Effect |
+|---|---|
+| `title`, `description` | Header text; description is muted, under the title |
+| `icon` | Lucide icon name, or `['name' => …, 'position' => 'left'\|'right']` |
+| `variant` | Omitted: plain stack. `'card'`: bordered card with a header row. `'plain'`: title as a small uppercase label |
+| `columns` | Lay the children out in a grid (same shape as `cols`) instead of a stack |
+| `collapsible`, `collapsed` | Chevron toggle in the header; `collapsed` sets the initial state |
+| `aside` | One node rendered as a right-hand column on `md` and wider |
+| `action` | `['label' => …, 'url' => …]`: a quiet link at the right of the header |
+| `class`, `colSpan`, `colStart` | Extra classes; placement in a parent grid |
+
+```php
+$s->section([
+    'title' => 'Shipping',
+    'description' => 'Where the order goes.',
+    'icon' => 'truck',
+    'variant' => 'card',
+    'columns' => 2,
+    'collapsible' => true,
+    'action' => ['label' => 'Carriers', 'url' => '/admin/carriers'],
+], [
+    $s->text('street')->label('Street')->columnSpan(2),
+    $s->text('city')->label('City'),
+    $s->text('postcode')->label('Postcode'),
+]),
+```
+
+Passing `label` instead of `title` throws with a "Did you mean 'title'?" hint. When a section is both collapsible and has an `aside`, collapsing hides the body but keeps the aside visible.
+
+A card section pads its body. The exception is a `table` that is a direct child: the table draws its own border, so the card drops the padding. A table nested one level deeper, inside a `stack` in the card, keeps the padding.
+
+## Collapsible and aside
+
+`collapsible(['label' => …, 'collapsed' => false], $children)` is a lighter alternative to a collapsible section: a chevron and a label, with the children indented below. Always pass `label`: it is the only header text. It also takes `colSpan` and `colStart`.
+
+`aside($children, $opts = [])` is a fixed-width column (20rem) placed next to the main content inside a `row` or `flex`:
+
+```php
+$s->row([
+    $detailsTabs,
+    $s->aside([
+        $s->section(['title' => 'Status', 'variant' => 'card'], [
+            $s->displayValue($order->status)->badge(['paid' => Color::Success, 'pending' => Color::Warning]),
+        ]),
+    ]),
+], ['gap' => 6]),
+```
+
+It does not stick on scroll, and because `row` does not wrap, it stays beside the content on narrow screens too. When the side content must drop below on a phone, use a `grid` with a breakpoint map instead. A section's `aside` option is a different thing: a column inside one section, which does stack on small screens.
+
+## Tabs
+
+```php
+$s->tabs([
+    ['name' => 'details', 'label' => 'Details', 'icon' => 'file-text', 'children' => [
+        $s->text('title')->label('Title')->columnSpan(2),
+        $s->text('sku')->label('SKU'),
+        $s->number('stock')->label('Stock'),
+    ], 'columns' => 2],
+    ['name' => 'orders', 'label' => 'Orders', 'badge' => $orderCount, 'body' => $ordersTable],
+    ['name' => 'history', 'label' => 'History', 'body' => $historyList],
+], ['name' => 'product']),
+```
+
+Each tab needs a `label` (or a `name` to derive one from) and exactly one of:
+
+- `body`: a single node;
+- `children`: a list, stacked, or laid out in a grid when the tab also sets `columns`.
+
+Mixing `body` with `children` or `columns` throws. A tab can carry an `icon` and a `badge`; `'active' => true` opens it first (if several are marked, the last wins).
+
+Passing `name` in the second argument makes the block *named*: every tab then needs its own unique `name`, and the open tab is written to the query string under the key `tab[product]` (`?tab[product]=history`, URL-encoded in the address bar as `tab%5Bproduct%5D`), so a reload or a shared link reopens it. Unnamed tabs always open on the default.
+
+Inside a form, fields in a closed tab still submit. After a failed submit each tab shows its error count, and if the open tab has no errors the first tab that does is opened.
+
+<Callout>
+`$s->tabs()` is a layout block. Table filter tabs (`Tab::make()` passed to a table's `->tabs()`) are a different feature, covered in [Tables](/docs/authoring/tables).
+</Callout>
+
+## Content blocks
+
+| Block | Shows | Chain |
+|---|---|---|
+| `displayText($text)` | Plain text | `->variant('heading'\|'subheading'\|'body'\|'muted')`, default `body` |
+| `displayAlert($message)` | Callout box | `->title()`, `->color()` (default `info`) |
+| `displayValue($value)` | One formatted value | `->badge()`, `->boolean()`, `->icon()`, `->money()`, `->date()`, `->datetime()`, `->number()`, `->copyable()`, `->multiline()` |
+| `displayKeyValue($map)` | Labelled pairs as a definition list | — |
+| `displayImage($url)` | Image, or a download link | `->alt()`, `->caption()`, `->asLink()`, `->circular()`, `->square()` |
+| `displayRichtext($state)` | A stored rich-text (Lexical) document, read-only | — |
+| `displayHtml($html)` | Raw HTML, unsanitized | — |
+| `markdown($text)` | Markdown converted to HTML on the server | `->allowHtml()` |
+| `displayDivider()` | Horizontal rule | — |
+
+There is no `heading()` block: a heading is `displayText('Orders')->variant('heading')`.
+
+```php
+$s->stack([
+    $s->displayText('Order #1042')->variant('heading'),
+    $s->displayText('Placed by a returning customer.')->variant('muted'),
+    $s->displayAlert('Payment is still pending.')->title('Awaiting payment')->color(Color::Warning),
+    $s->displayKeyValue(['Customer' => $order->customer_name, 'Email' => $order->email]),
+    $s->displayValue($order->total_cents)->money('USD'),
+    $s->displayDivider(),
+    $s->markdown($order->internal_notes ?? ''),
+]),
+```
+
+- **`displayValue` formats like a table column.** `money()` takes minor units and divides by 100. `money`, `date`, `datetime` and `number` are formatted on the server; `badge`, `boolean` and `icon` ship the raw value and the client renders it. It has no label; pair it with a `displayText` or use `displayKeyValue`.
+- **`displayHtml` is not escaped.** Anything user-supplied in it is an XSS hole. Escape it yourself or use `markdown()`.
+- **`markdown()` strips embedded HTML** and unsafe links by default. `->allowHtml()` passes HTML through; use it only for text you control.
+- **Content blocks take `->when()`**, which drops the block from the response when false.
+
+The demo's [record detail page](https://demo.tbtop.dev/admin/record-detail) is built from these blocks.
+
+## Data blocks and action rows
+
+These are covered on their own pages, but they are placed like any other node:
+
+| Block | Page |
+|---|---|
+| `form($name, $children)` | [Forms](/docs/authoring/forms) |
+| `table($name)` | [Tables](/docs/authoring/tables) |
+| `action($name)`, `actionGroup()`, `dropdown()` | [Actions](/docs/authoring/actions) |
+| `stat($label)`, `chart($name, $type)`, `list($name)` | [Blocks reference](/docs/api/blocks) |
+| `liveRegion($name)` | [Live regions](/docs/extending/live-regions) |
+
+Builders serialize themselves, so a `table`, `stat` or `chart` goes straight into a children array; calling `->toNode()` first is optional. `view()` itself must return a `Node`, so the root is a structural block.
+
+`actionsRow($actions)` renders standalone buttons in a row, outside any form or table. `['variant' => 'grid']` lays them out as a grid of bordered tiles (two columns, three from `sm`, four from `lg`), which suits a page of quick links.
+
+Stats have no card wrapper to configure: a stat is already a card. A row of stats is a `grid` of stats.
+
+## A composed page
+
+A dashboard with a stats row, an orders table taking two thirds of the width, and a card holding a quick-create form and a short list:
+
+```php
+namespace App\Admin\Pages;
+
+use App\Models\Customer;
+use App\Models\Order;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+use Tbtop\Admin\Dsl\Actions\FormActions;
+use Tbtop\Admin\Dsl\Color;
+use Tbtop\Admin\Dsl\Column;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Pages\Page;
+
+class SalesPage extends Page
+{
+    public static function path(): string
+    {
+        return 'sales';
+    }
+
+    public function view(S $s): Node
+    {
+        return $s->stack([
+            $s->grid(['cols' => 4], [
+                $s->stat('Orders today')
+                    ->value(fn () => Order::whereDate('created_at', today())->count())
+                    ->icon('shopping-cart'),
+                $s->stat('Pending')
+                    ->value(fn () => Order::where('status', 'pending')->count())
+                    ->icon('clock')
+                    ->color(Color::Warning),
+                $s->stat('Customers')
+                    ->value(fn () => Customer::count())
+                    ->icon('users'),
+                $s->stat('New this month')
+                    ->value(fn () => Customer::where('created_at', '>=', now()->startOfMonth())->count())
+                    ->icon('user-plus')
+                    ->color(Color::Success),
+            ]),
+
+            $s->grid(['cols' => ['lg' => 3], 'gap' => 6], [
+                $s->section(['title' => 'Recent orders', 'variant' => 'card', 'colSpan' => ['lg' => 2]], [
+                    $s->table('orders')
+                        ->columns([
+                            'number' => 'Number',
+                            'customer_name' => 'Customer',
+                            Column::make('total_cents')->label('Total')->money('USD'),
+                            Column::make('status')->label('Status')
+                                ->badge(['paid' => Color::Success, 'pending' => Color::Warning]),
+                        ])
+                        ->searchable(['number', 'customer_name'])
+                        ->defaultSort('created_at', 'desc')
+                        ->query(fn () => Order::query()),
+                ]),
+
+                $s->stack([
+                    $s->section(['title' => 'New customer', 'variant' => 'card'], [
+                        $s->form('customer', [
+                            $s->grid(['cols' => ['sm' => 2]], [
+                                $s->text('name')->label('Name')->required()->columnSpan(['sm' => 2]),
+                                $s->text('email')->label('Email')->rules('required|email'),
+                                $s->select('plan')->label('Plan')->options([
+                                    ['value' => 'basic', 'label' => 'Basic'],
+                                    ['value' => 'pro', 'label' => 'Pro'],
+                                ]),
+                            ]),
+                            FormActions::save($s, 'Add customer'),
+                        ])
+                            ->record(['name' => '', 'email' => '', 'plan' => 'basic'])
+                            ->onSubmit(function (ActionCtx $ctx): Effects {
+                                Customer::create($ctx->form);
+
+                                return Effects::make()->notify('Customer added')->resetForm('customer');
+                            }),
+                    ]),
+                    $s->section(['title' => 'Needs attention', 'variant' => 'plain'], [
+                        $s->list('attention')->items(fn () => Order::where('status', 'pending')
+                            ->oldest()->limit(5)->get()
+                            ->map(fn (Order $o) => [
+                                'title' => $o->number,
+                                'meta' => $o->created_at->diffForHumans(),
+                                'color' => 'warning',
+                            ])->all()),
+                    ]),
+                ]),
+            ]),
+        ]);
+    }
+}
+```
+
+What each piece does:
+
+- The stats grid uses an int `cols`: one column on a phone, four from `md`.
+- The second grid has three columns from `lg`. The orders section spans two of them with a breakpoint-matched `colSpan`; below `lg` both columns stack at full width.
+- The table is a direct child of a card section, so the card is frameless around it.
+- Inside the form, the fields are wrapped in a `grid` because a form stacks its children. `name` spans both columns from `sm`, matching the grid's own breakpoint.
+- The form, the table and the list are independent: the form's submit does not reload the table. Add `->refreshTable('orders')` to the effects when it should.
+
+The demo [dashboard](https://demo.tbtop.dev/admin/dashboard) combines a stats grid, charts and content blocks the same way, and the [posts page](https://demo.tbtop.dev/admin/posts) holds two tables on one page.
+
+## Gotchas
+
+- **`columnSpan` in a stack does nothing.** No error, no effect. Check that the parent is a `grid`, a `section` with `columns` or a tab with `columns`.
+- **`class` needs Tailwind to see the class.** `stack`, `row`, `flex`, `grid`, `section` and `aside` accept `class`, merged onto the block's root. Tailwind only generates CSS for class names it finds in scanned source, so a class that exists only in a PHP string outside the scan renders unstyled. Prefer the real options (`gap`, `cols`, `colSpan`) when one exists.
+- **Chrome blocks.** `navMenu()`, `userMenu()`, `logo()`, `localeSwitcher()`, `notifications()` and `themeToggle()` are meant for the panel shell. They render inside a page too, but they read the shell's shared data.
