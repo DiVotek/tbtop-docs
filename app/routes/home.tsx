@@ -1,5 +1,5 @@
 import { HomeLayout } from "fumadocs-ui/layouts/home";
-import { Link } from "react-router";
+import { Hero } from "@/components/landing/Hero";
 import { baseOptions } from "@/lib/layout.shared";
 import type { Route } from "./+types/home";
 
@@ -16,26 +16,24 @@ export function meta(_: Route.MetaArgs) {
 export default function Home() {
 	return (
 		<HomeLayout {...baseOptions()}>
-			<div className="p-4 flex flex-col items-center justify-center text-center flex-1">
-				<h1 className="text-xl font-bold mb-2">Tabletop Docs</h1>
-				<p className="text-fd-muted-foreground mb-4">
-					tbtop/admin is a PHP DSL for building admin panels, with a React client.
-				</p>
-				<div className="flex items-center gap-3">
-					<Link
-						className="text-sm bg-fd-primary text-fd-primary-foreground rounded-full font-medium px-4 py-2.5"
-						to="/docs"
-					>
-						Read the Docs
-					</Link>
-					<a
-						className="text-sm border border-fd-border rounded-full font-medium px-4 py-2.5"
-						href="https://tbtop.dev"
-					>
-						tbtop.dev
-					</a>
-				</div>
-			</div>
+			<Hero
+				eyebrow="Public beta · Open source"
+				heading="Admin panels for Laravel,"
+				accent="written in PHP. Rendered in React."
+				lead="Describe pages, tables, forms and actions in a PHP DSL; Tabletop renders them as a React admin. We build every client project on it, and our own CMS — closed beta today, public next."
+				bullets={[
+					{ text: "26 field kinds", snippet: "fields" },
+					{ text: "Tables & filters", snippet: "tables" },
+					{ text: "Actions & modals", snippet: "actions" },
+					{ text: "Multi-panel", snippet: "panels" },
+					{ text: "Command palette", snippet: "palette" },
+					{ text: "Notifications", snippet: "notifications" },
+					{ text: "Locales", snippet: "locales" },
+					{ text: "Your React components", snippet: "extend" },
+				]}
+				command="composer require tbtop/admin"
+				facts={["MIT licence", "Laravel 11–13", "PHP 8.4+", "Self-hosted"]}
+			/>
 		</HomeLayout>
 	);
 }
