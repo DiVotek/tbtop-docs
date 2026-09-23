@@ -1,6 +1,6 @@
 ---
 title: "Actions"
-description: "Buttons that navigate, submit or run a server closure — as page, row and bulk actions, with confirmations, modals and the effects they send back."
+description: "Buttons that navigate, submit or run a server closure — as page, row and bulk actions, with confirmations, modals, slide-overs and the effects they send back."
 ---
 
 An action is a button declared in PHP with `$s->action('name')`. It does one of five
@@ -89,8 +89,8 @@ for the table these slots belong to.
 
 ## Confirmation
 
-`confirm($title, $description)` puts a dialog in front of any spec. It is not a spec
-itself, so it combines with `visit`, `handle`, `submit` or `custom`.
+`confirm($title, $description = null)` puts a dialog in front of an action. It is not a
+spec, so it sits next to `handle()`, `submit()` or `custom()` on the same builder.
 
 ```php
 $s->action('cancelOrder')->label('Cancel order')->color('danger')
@@ -98,11 +98,31 @@ $s->action('cancelOrder')->label('Cancel order')->color('danger')
     ->handle(fn (ActionCtx $ctx): Effects => Effects::make()->notify('Order cancelled')->refreshTable(), needs: ['row']);
 ```
 
+The dialog shows the title, the description and one button. That button carries the
+action's own label and colour. Without a label it reads "Confirm", and without a colour it
+is `danger`. The builder has no separate confirm or cancel label and no variant setting: to
+change the button, change the action's `label()` and `color()`. There is no Cancel
+button. The user backs out with the × in the corner, Escape or a click outside. The
+dialog closes after the handler runs, unless the response carries `haltModal()`, in which
+case it stays open and shows the message.
+
+The client applies `confirm()` only to `handle()`, `submit()` and `custom()`. On a
+`visit()` or `modal()` action it is dropped without an error, and the action runs
+straight away. To confirm before navigating, use `handle()` and return `redirect()`. For
+a modal, put the warning in the modal's description.
+
 ## Modals
 
-A modal action opens a dialog whose body is any node, usually a form. The modal has no
-footer of its own: the buttons are an `actionsRow` placed as the form's last child, and
-each button is its own action. The inner action reads `$ctx->row`, which is filled only when the modal was opened from a table row, so this one is a row action:
+`modal($title, $body = null, $description = null)` is the spec for an action that opens
+a dialog. The title and description form the header, and the body is any node, usually
+a form. With no body, the dialog shows only its header, which is enough for a short
+notice.
+
+The modal has no footer and no submit or cancel options. Its buttons are an `actionsRow`
+placed as the form's last child, and each button is an action of its own, so its label,
+colour and handler are set the usual way. The row sits inside the scrolling body, after
+the fields. The inner action reads `$ctx->row`, which is filled only when the modal was
+opened from a table row, so this one is a row action:
 
 ```php
 $s->table('orders')->rowActions([
@@ -112,6 +132,8 @@ $s->table('orders')->rowActions([
             $s->number('amount')->label('Amount')->required()->rules('numeric|min:0.01'),
             $s->textarea('reason')->label('Reason')->required(),
             $s->actionsRow([
+                $s->action('refundCancel')->label('Cancel')->outlined()
+                    ->handle(fn (): Effects => Effects::make()->closeModal()),
                 $s->action('refundSubmit')->label('Refund')->color('danger')->handle(
                     function (ActionCtx $ctx): Effects {
                         $order = Order::query()->whereKey($ctx->row['id'] ?? null)->firstOrFail();
@@ -127,22 +149,110 @@ $s->table('orders')->rowActions([
                     needs: ['row', 'form'],
                 ),
             ]),
-        ])->record(['amount' => null, 'reason' => '']))
+        ])->record(['amount' => null, 'reason' => '']), description: 'The amount goes back to the original payment method.')
         ->modalWidth('lg'),
 ]);
 ```
+
+A Cancel button is a `handle()` that returns `closeModal()`. That costs one request; the
+modal presets build their Cancel and Close buttons the same way.
 
 The inner action's rules run before the closure. A failing rule answers 422 and the
 messages appear under the fields. For errors only the domain can detect, return
 `haltModal($message)`: it shows the message inside the open dialog and keeps what the
 user typed. `notify()` followed by `closeModal()` would throw the input away.
 
-The builder has three other modal settings:
+### Dialog or slide-over
 
-- `query(fn (ActionCtx $ctx): array => ..., needs: ['row'])` runs when the modal opens.
-  It returns data for the body, and keys that match field names prefill the form.
-- `modalWidth()` takes `sm`, `md`, `lg`, `xl` to `7xl`, or `full`. Any other value throws.
-- `slideOver()` opens the modal as a full-height panel on the right.
+A modal action has two presentations:
+
+| Presentation | How | From 640px wide | Below 640px |
+|---|---|---|---|
+| Dialog (default) | nothing to set | centred dialog | sheet from the bottom, up to 65% of the screen height |
+| Slide-over | `->slideOver()` | full-height panel on the right | full-height panel on the right, full width |
+
+```php
+$s->action('newOrder')
+    ->label('New order')
+    ->modal('New order', $s->form('newOrder', [/* fields and actionsRow */]))
+    ->slideOver()
+    ->modalWidth('xl');
+```
+
+A slide-over suits a long form, which then scrolls in a full-height panel beside the
+table. `slideOver(false)` switches it back off.
+
+### Width
+
+`modalWidth()` caps the panel's width from 640px up. Below that, a dialog becomes a
+bottom sheet and a slide-over takes the full width, whatever the setting. It applies to
+both presentations. The default is `md`.
+
+| Value | Maximum width |
+|---|---|
+| `sm` | 28rem |
+| `md` (default) | 32rem |
+| `lg` | 42rem |
+| `xl` | 36rem |
+| `2xl` | 42rem |
+| `3xl` | 48rem |
+| `4xl` | 56rem |
+| `5xl` | 64rem |
+| `6xl` | 72rem |
+| `7xl` | 80rem |
+| `full` | 56rem |
+
+The first four names are older than the rest, and two results follow from that: `lg` is
+wider than `xl`, and `full` stops at 56rem instead of filling the screen. For the widest
+panel, use `7xl`. Any other value throws an `InvalidArgumentException` when you call
+`modalWidth()`.
+
+### Loading data when the modal opens
+
+`query(fn (ActionCtx $ctx): array => ..., needs: ['row'])` runs on the server each time
+the modal opens. `needs` takes `row`, `selection` and `form` and defaults to `['row']`.
+The body shows a loading skeleton until the data arrives, and an error in its place if
+the request fails. The array `query()` returns becomes the starting values of the form
+in the body. It replaces that form's `record()`, which is not used inside a modal that
+has `query()`.
+
+`$ctx->row` is filled only when the action is opened from a table row, so this one is a
+row action:
+
+```php
+$s->table('tickets')->rowActions([
+    $s->action('reassign')
+        ->label('Reassign')
+        ->modal('Reassign ticket', $s->form('reassign', [
+            $s->select('assignee_id')->label('Assignee')->options($agents),
+            $s->actionsRow([/* save action with needs: ['row', 'form'] */]),
+        ]))
+        ->query(fn (ActionCtx $ctx): array => [
+            'assignee_id' => Ticket::query()->whereKey($ctx->row['id'] ?? null)->value('assignee_id'),
+        ], needs: ['row']),
+]);
+```
+
+`modalWidth()`, `slideOver()` and `query()` belong to the modal spec. On any other spec
+they throw a `LogicException` when the page is rendered.
+
+### Closing
+
+A modal closes when the user clicks the × in the corner, presses Escape or clicks
+outside it. None of the three can be turned off from PHP. From the server, the
+`closeModal()` effect closes the modal that the action ran in. When the effects come from
+a form's own `onSubmit()` handler, which the client receives after the page reloads,
+`closeModal()` closes the most recently opened modal.
+
+The body exists only while the modal is open. Closing throws away what the user typed,
+and opening again starts the form from its `record()`, or from a fresh `query()` result
+when the modal has one. A message
+left by `haltModal()` is cleared on the next open. `haltModal()` takes a kind as its
+second argument (`error` by default, or `warning`, `info` or `success`) that sets the
+colour of the banner.
+
+A modal body can contain another modal action. That opens a second modal on top, and a
+`closeModal()` from inside it closes only the inner one.
 
 ### Presets
 
@@ -167,8 +277,31 @@ Other presets cover one-click row operations and form buttons:
 A preset closure can return nothing, and the preset then sends its default effects: a
 toast, closing the modal where there is one, and refreshing the table. Return an
 `Effects` instance to replace those defaults. Bulk `DeleteAction` skips your closure and
-shows a warning when nothing is selected. The modal and row presets return the `ActionBuilder`, so
-`->label()`, `->slideOver()`, `->modalWidth()` and `->hiddenIf()` still chain.
+shows a warning when nothing is selected. Every preset returns the `ActionBuilder`, so
+`->label()` and `->hiddenIf()` still chain. The modal settings chain only onto the modal
+presets; see the next section.
+
+### Modal settings on presets
+
+`EditAction`, `CreateAction` and `ViewAction` take the modal title as `title:`. They
+return the `ActionBuilder` with the modal already set, so `->slideOver()`,
+`->modalWidth()`, `->label()` and `->hiddenIf()` chain onto them. A description cannot
+be added to a preset, because it goes through `modal()` and a second `modal()` call
+throws. Build the modal by hand when you need one.
+
+```php
+EditAction::make($s, form: $orderForm, loadUsing: $load, saveUsing: $save, title: 'Edit order')
+    ->slideOver()
+    ->modalWidth('2xl');
+```
+
+`DeleteAction`, `ReplicateAction`, `RestoreAction` and `ForceDeleteAction` are server
+actions, so `slideOver()` and `modalWidth()` on them throw when the page is rendered.
+
+To open a row's modal by clicking the row itself, point the table's `rowClick()` at the
+action's name. See [Tables](/docs/authoring/tables).
+
+The full method list is in [Actions](/docs/api/actions).
 
 ## Effects
 
@@ -237,6 +370,8 @@ load the record. `when(false)` also removes an action, with the same 404.
 
 - `modal()` and `handle()` on the same builder are two specs and throw. The server work
   belongs to an inner action inside the modal body.
+- `confirm()` on a `visit()` or `modal()` action is dropped without an error, and the
+  action runs with no dialog.
 - `hiddenIf()` only hides the button in the browser. The endpoint still accepts the call,
   so the handler must re-check the record's state.
 - Action names must be unique on a page. A second action with the same name replaces the first in the registry. This includes the inner actions that presets add:
