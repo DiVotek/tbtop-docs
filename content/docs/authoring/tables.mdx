@@ -1,5 +1,260 @@
 ---
 title: "Tables"
+description: "Build a server-driven table: columns, sorting, search, filters, tabs, pagination, and row and bulk actions."
 ---
 
-This page is being written.
+A table is a block you add to a page with `$s->table('name')`. It needs two things: `columns()` to say what each row shows, and `query()` to say where the rows come from. Everything else — sorting, search, filters, tabs, actions — is opt-in.
+
+The table never ships its rows with the page. The browser fetches them from a page-scoped endpoint, and every sort, search, filter and page change is a new request that re-runs your `query()` closure on the server. The name you give the table is how actions and effects refer to it, so keep it unique on the page.
+
+The full method lists are in the [Tables API reference](/docs/api/tables): [`TableBuilder`](/docs/api/tables#tablebuilder), [`Column`](/docs/api/tables#column) and [`Tab`](/docs/api/tables#tab).
+
+## A minimal table
+
+```php
+namespace App\Admin\Pages;
+
+use App\Models\Product;
+use Tbtop\Admin\Dsl\Color;
+use Tbtop\Admin\Dsl\Column;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Pages\Page;
+
+class ProductsIndexPage extends Page
+{
+    public static function path(): string
+    {
+        return 'products';
+    }
+
+    public function view(S $s): Node
+    {
+        return $s->table('products')
+            ->query(fn () => Product::query()->with('category'))
+            ->columns([
+                Column::make('name')->label('Name')->sortable()->searchable(),
+                Column::make('category.name')->label('Category'),
+                Column::make('price_cents')->label('Price')->money('USD')->align('right'),
+                Column::make('status')->badge([
+                    'draft' => Color::Gray,
+                    'live' => Color::Success,
+                ]),
+                Column::make('updated_at')->label('Updated')->date('Y-m-d')->sortable(),
+            ])
+            ->defaultSort('updated_at', 'desc')
+            ->toNode();
+    }
+}
+```
+
+`query()` must return a fresh builder on every call — it runs once for the rows and again for each tab count. Returning `Product::query()` from the closure does that; capturing one builder instance outside the closure does not.
+
+## Columns
+
+`Column::make('name')` reads the attribute of the same name from each row. The label defaults to the humanized name. A quick table can also pass `['sku' => 'SKU', 'name' => 'Name']` to `columns()`.
+
+**Relation columns.** A dotted name such as `category.name` reads through a loaded relation. Eager-load it in `query()`. Search runs as SQL on the column name, so `searchable()` on a dotted column fails at query time. Sorting is handled separately — see [Sorting](#sorting).
+
+**Display kinds.** One kind method decides how a cell renders:
+
+| Method | Renders |
+|---|---|
+| `date()`, `datetime()`, `time()` | a formatted date or time, `Y-m-d` / `Y-m-d H:i:s` / `H:i` by default |
+| `number($decimals)` | a formatted number |
+| `money('USD')` | an amount stored in minor units: 1999 renders as 19.99 USD |
+| `badge([...])` | a colored badge, color chosen by value |
+| `boolean()` | a check or cross icon |
+| `iconMap([...])` | an icon chosen by value |
+| `image()` | a thumbnail; shape with `square()`, `rounded()` or `circular()` |
+| `color()` | a color swatch |
+| `link(fn ($row) => ...)` | a link to the URL the closure returns |
+
+Kind methods are exclusive: chaining two keeps only the last. Formatting happens on the server, so `date()` and `money()` are applied before the value reaches the browser. `formatUsing(fn ($value, $row) => ...)` replaces the kind's formatting entirely — it does not layer on top.
+
+**Visibility.** `hidden()` drops the column from the table: it is not rendered, not projected and cannot be edited inline. `visible(fn () => ...)` makes that decision per request. Neither keeps the value out of the browser. For an Eloquent row the response is the model's full `toArray()` with the declared columns overwritten, so a hidden attribute, and a whole eager-loaded relation behind a dotted column, still travel in the row JSON. To withhold a value, keep it out of the row: `select()` only the columns you need in `query()`, use the model's `$hidden` or `makeHidden()`, or narrow the eager load (`with('customer:id,name')`). `toggleable()` ships the column and lets the user hide it from the column menu; `toggleable(true, true)` starts it hidden.
+
+**Translatable values.** `->translatable()` on a column reads a locale map and shows the default content locale, falling back to the first non-empty locale. See [translatable fields](/docs/authoring/fields#translatable-fields).
+
+**Presentation.** `align()`, `width()`, `wrap()`, `truncate()`, `noWrap()`, `muted()`, `description()`, `tooltip()`, `prefix()`/`suffix()` and `copyable()` adjust a cell without changing its value.
+
+## Sorting
+
+A column is sortable only if you say so with `sortable()`. The sort parameter in the request is checked against that list, so a user cannot sort by an arbitrary column. `defaultSort('field', 'desc')` sets the order used when the request carries none; the default field is always allowed.
+
+When the value to sort by is not the column's own name, redirect the sort:
+
+```php
+// full_name is an accessor; sort by the real column instead
+Column::make('full_name')->label('Name')
+    ->sortable()
+    ->sortBy('last_name'),
+
+// a related value, sorted through the customer() relation
+Column::make('customer.name')->label('Customer')
+    ->sortable(),
+
+Column::make('total_cents')->label('Total')->money('USD')
+    ->sortable()
+    ->sortUsing(fn ($query, string $direction) => $query->orderByRaw(
+        'total_cents - discount_cents '.$direction
+    )),
+```
+
+`sortBy()` names another field to order by. A dotted sort target whose first segment is a relation method on the model — a sortable `customer.name` column, or `sortBy('customer.name')` — is ordered through a correlated subquery rather than a join; a to-many relation sorts by its first related row. This needs an Eloquent `query()`. `sortUsing()` gives you the query and a direction already validated to `asc` or `desc`; it wins over `sortBy()`.
+
+## Search
+
+There are two kinds of search, and they combine.
+
+**Global search** is the single search box in the toolbar. It matches any of the searchable fields: every `Column::searchable()` column plus the field names you pass to the table's `searchable([...])`. Those names do not have to be visible columns.
+
+```php
+$s->table('customers')
+    ->columns([
+        Column::make('name')->searchable(),
+        Column::make('email'),
+    ])
+    ->searchable(['email', 'phone'])   // searches name OR email OR phone
+    ->searchPlaceholder('Name, email or phone')
+```
+
+**Per-column search** adds a search input to a column's header with `individuallySearchable()`. Each per-column box narrows the result on its own, so two filled boxes both have to match.
+
+Both run `LIKE '%term%'` on the named database column. That has two consequences: a dotted relation column cannot be searched this way, and a translatable column stored as JSON is matched against its raw JSON text, not against one locale.
+
+## Filters
+
+Filters reuse form fields. Declare them with `filters()`:
+
+```php
+use Tbtop\Admin\Dsl\Fields\Boolean;
+use Tbtop\Admin\Dsl\Fields\Daterange;
+use Tbtop\Admin\Dsl\Fields\InFilter;
+use Tbtop\Admin\Dsl\Fields\Select;
+
+->filters([
+    InFilter::make('status')->label('Status')->options([
+        ['value' => 'pending', 'label' => 'Pending'],
+        ['value' => 'paid', 'label' => 'Paid'],
+        ['value' => 'refunded', 'label' => 'Refunded'],
+    ]),
+    Select::make('warehouse_id')->label('Warehouse')->options($warehouseOptions),
+    Daterange::make('shipped_on')->label('Shipped'),
+    Boolean::make('overdue')->label('Overdue only')
+        ->filterUsing(fn ($query, $value) => $query->when(
+            filter_var($value, FILTER_VALIDATE_BOOLEAN),
+            fn ($q) => $q->where('due_on', '<', now()->toDateString())->whereNull('paid_at'),
+        )),
+])
+->filtersIn('modal')
+->deferFilters()
+->filtersFormColumns(2)
+```
+
+Each filter narrows the query by its own field name, using a mapping chosen by the field kind:
+
+| Filter kind | Query applied |
+|---|---|
+| `select`, `radio`, `number`, `date`, `datetime`, `time` | `where(name, value)` |
+| `text`, `textarea`, `slug`, `password` | `where(name, 'like', '%value%')` |
+| `boolean` | `where(name, true/false)` |
+| `inFilter`, `tags` | `whereIn(name, values)` |
+| `daterange` | `>= from` and `<= to`, each end optional |
+| anything else, such as `relation` | throws — add `filterUsing()` |
+
+`filterUsing(fn ($query, $value) => ...)` replaces the default mapping. Use it whenever the filter name is not a column on the table's model: a virtual flag like `overdue` above, a condition on a relation with `whereHas()`, or a date range over a `datetime` column. The default daterange compares against the bare day, so on a timestamp column the last day is cut off at midnight; `whereDate()` inside `filterUsing()` avoids that. An empty value never reaches the query.
+
+`filtersIn('modal')` (the default) puts the filters behind a button; `filtersIn('inline')` puts them in the toolbar. Any other value throws. `deferFilters()` waits for an explicit Apply before narrowing the query. Only declared filters are applied: a table without `filters()` ignores filter parameters in the request.
+
+## Tabs
+
+Tabs are predefined scopes above the table, not the layout tabs from `$s->tabs()`:
+
+```php
+use Tbtop\Admin\Dsl\Tab;
+
+->tabs([
+    Tab::make('all')->label('All'),
+    Tab::make('open')->label('Open')
+        ->query(fn ($q) => $q->whereNull('closed_at'))
+        ->count(),
+    Tab::make('closed')->label('Closed')
+        ->query(fn ($q) => $q->whereNotNull('closed_at')),
+])
+```
+
+A tab's `query()` narrows the table's builder in place and runs before search, filters and sort. The first tab is the default. `count()` adds a badge with the number of rows in the tab, at the cost of one count query per tab per request; the badge ignores the current search and filters.
+
+## Pagination
+
+Pagination is always on. `paginate(25, [10, 25, 50, 100])` sets the default page size and the sizes the user can pick — those are also the defaults. A requested page size outside the list falls back to the default.
+
+## Rows and actions
+
+**Row links.** `recordUrl(fn ($row) => "/admin/orders/{$row->id}")` makes each row a link; the closure receives the model. `rowClick('edit')` instead makes a row click fire the row action named `edit`.
+
+**Actions.** A table carries three action slots:
+
+```php
+->headerActions([ /* above the table, e.g. a Create button */ ])
+->rowActions([ /* per row; the handler gets the row */ ])
+->bulkActions([ /* shown once rows are checked; the handler gets the keys */ ])
+```
+
+```php
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+use Tbtop\Admin\Dsl\Actions\DeleteAction;
+
+->rowActions([
+    $s->action('open')->label('Open')->visit('/admin/orders/{row.id}'),
+    DeleteAction::make($s, using: function (ActionCtx $ctx): void {
+        Order::whereKey($ctx->row['id'] ?? null)->delete();
+    }),
+])
+->bulkActions([
+    $s->action('mark-paid')->label('Mark paid')
+        ->confirm('Mark the selected orders as paid?')
+        ->handle(function (ActionCtx $ctx): Effects {
+            $count = Order::whereKey($ctx->selection)->update(['paid_at' => now()]);
+
+            return Effects::make()->notify("{$count} order(s) marked paid")->refreshTable('orders');
+        }, needs: ['selection']),
+])
+```
+
+The selection holds the checked rows on the current page only; it is cleared whenever the rows change — a new page, a filter, a refresh. Handlers, confirmation, modals and effects are covered on [Actions](/docs/authoring/actions).
+
+**Inline editing.** `toggle()`, `textInput()`, `numberInput()` and `selectColumn()` make a cell editable. Each needs an `onSave` closure, which receives the model and the new value:
+
+```php
+Column::make('featured')->label('Featured')
+    ->toggle()
+    ->onSave(function (Product $product, bool $value): Effects {
+        $product->update(['featured' => $value]);
+
+        return Effects::make()->notify($value ? 'Featured' : 'Unfeatured');
+    }),
+```
+
+The model is loaded through the table's own `query()`, so a row outside that query cannot be edited, and the query must be Eloquent. Add `rules()` to the column to validate the value before `onSave` runs. An editable cell shows the raw stored value, so kind formatting does not apply, and `formatUsing()` on an editable column throws when the page renders; use `prefix()`/`suffix()` for units. `step()` without `numberInput()` throws too.
+
+## More table features
+
+- **Reordering.** `reorderable('sort_order')` adds drag handles and writes the new order to that column. It also becomes the default sort.
+- **Grouping.** `groups('status')` puts a header row above each run of rows sharing a value. It requires `defaultSort('status', ...)` first, groups only within the current page, and is off while reordering.
+- **Soft deletes.** `softDeletes($s, Order::class)` adds Active / Trashed / All tabs and restore and force-delete row and bulk actions. Call it after your own `tabs()`, `rowActions()` and `bulkActions()`; it merges into them. The three tabs are prepended, so Active becomes the default tab instead of your first one. Pass `['tabs' => false]`, `['rowActions' => false]` or `['bulkActions' => false]` as the third argument to skip a part.
+- **Embedding.** `embedded()` drops the toolbar, filters and pagination footer, for a small table inside a card. `toolbar(false)`, `searchInput(false)` and `columnToggle(false)` hide less.
+- **Empty state.** `emptyState('No orders yet', 'Orders appear here once a customer checks out.', 'package')` replaces the default message.
+- **Several tables per page.** A page may hold any number of tables, each with its own name and query — for example the related rows under a record's edit form.
+
+## Gotchas
+
+- **`money()` expects minor units.** Store 1999, not 19.99. For a decimal column, use `number(2)` and a `suffix()`.
+- **Hidden columns are not a security boundary.** `hidden()`, `visible()` and `toggleable(true, true)` only decide what renders; an Eloquent row still carries every attribute from `toArray()`. Leave sensitive values out with `select()`, `$hidden`/`makeHidden()` or a constrained eager load.
+- **`filterUsing()` receives the raw query-string value.** The kind's casting applies only to the default mapping, so a boolean filter's closure can get the string `"false"`, which is truthy. Cast it yourself, for example with `filter_var($value, FILTER_VALIDATE_BOOLEAN)`.
+- **Row values come from the browser.** In a row action, `$ctx->row` is the row as the client sent it. Look the record up by its key and check access there; do not trust other fields in it.
+- **`refreshTable()` with no name** refreshes the table the action sits in, or every table on the page when it is outside one. Name the table when an action on one table should refresh another.
+
+See it in the demo: the [posts table](https://demo.tbtop.dev/admin/posts) combines tabs, modal filters, grouping, per-column search, an inline toggle, row and bulk actions and a slide-over create form. [Reorderable posts](https://demo.tbtop.dev/admin/reorderable-posts) shows drag reordering, and [Soft deletes](https://demo.tbtop.dev/admin/soft-deletes) shows the soft-delete tabs and actions.

@@ -1,5 +1,272 @@
 ---
 title: "Pages"
+description: "How a Page class maps to a route, how view() builds its tree with the S builder, and how a CRUD resource becomes a family of pages."
 ---
 
-This page is being written.
+Every screen in a Tabletop panel is one PHP class that extends `Tbtop\Admin\Pages\Page`. The class says where the page lives (`path()`) and what is on it (`view()`). Everything else — title, navigation entry, gate, breadcrumbs, shell layout — is an optional hook with a working default.
+
+There is no resource class and no controller to write. A registered page gets a route, and its `view()` returns a tree of nodes that the React client renders.
+
+## A minimal page
+
+```php
+namespace App\Admin\Pages;
+
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Pages\Page;
+
+class ReportsPage extends Page
+{
+    public static function path(): string
+    {
+        return 'reports';
+    }
+
+    public function view(S $s): Node
+    {
+        return $s->stack([
+            $s->displayText('Reports')->variant('heading'),
+            $s->displayText('Nothing to show yet.')->variant('muted'),
+        ]);
+    }
+}
+```
+
+`path()` is a Laravel route URI relative to the panel prefix, so with a panel mounted at `admin` this page answers `/admin/reports`. The Artisan scaffold writes the same shape:
+
+```
+php artisan make:tbtop-page Reports
+```
+
+The command creates `app/Admin/Pages/ReportsPage.php` (it appends the `Page` suffix) with a `nav()` entry in the `Main` group. `--path=` overrides the URI, `--group=` sets the nav group, `--no-nav` leaves `nav()` out and `--force` overwrites an existing file. It then reports whether a panel discovers that directory or whether you must add the class to `pages()` yourself. Registration and discovery are covered in [Panel](/docs/getting-started/panel).
+
+## How a page runs
+
+`view()` is not called once. The package rebuilds the page from a fresh `view()` on the initial `GET` and again on every request to one of the page's endpoints — a form submit, an action click, a table fetch, a select search. Closures such as a form's `onSubmit` are never serialized; the server finds them again by name in the rebuilt page.
+
+Three consequences:
+
+- **Names must be stable.** `$s->form('invoice', …)`, `$s->table('invoices')` and `$s->action('delete')` register under those names. Keep them unique per page — reusing a name replaces the earlier entry — and do not derive them from anything that changes between requests.
+- **A form or action must still exist when it is used.** If `view()` does not build the form on the submit request, the submit answers 404.
+- **Keep `view()` cheap.** It runs on every endpoint request, not just the first render.
+
+Page classes are resolved from the Laravel container, so constructor injection works.
+
+## Page hooks
+
+| Method | Default | Use it to |
+|---|---|---|
+| `static path(): string` | required | Route URI, may contain parameters: `'invoices/{invoice}/edit'` |
+| `view(S $s): Node` | required | Return the page's node tree |
+| `title(): string` | headline of the class name | Page heading |
+| `subtitle(): ?string` | `null` | Muted line under the heading |
+| `headerActions(S $s): array` | `[]` | Buttons beside the title |
+| `static nav(): ?array` | `null` (not in nav) | Place the page in the menu — see [Navigation](/docs/authoring/navigation) |
+| `static can(): ?string` | `null` | Gate ability required to open the page |
+| `static middleware(PanelConfig $panel): ?array` | `null` (panel stack) | Replace the auth middleware for this page |
+| `breadcrumbs(): array\|Closure\|null` | `null` (auto) | Override the breadcrumb trail |
+| `layout(): string` | `'admin'` | `'center'` for a chrome-less, centered page |
+| `static slug(): string` | kebab of the class name | Route name of the page and its endpoints |
+| `static isDiscovered(): bool` | `true` | Exclude the class from directory discovery |
+
+A heading, a subtitle and a header button together:
+
+```php
+public function title(): string
+{
+    return 'Invoices';
+}
+
+public function subtitle(): ?string
+{
+    return 'Issued and draft invoices for all customers.';
+}
+
+public function headerActions(S $s): array
+{
+    return [
+        $s->action('new')->label('New invoice')->color('primary')->visit('/admin/invoices/new'),
+    ];
+}
+```
+
+### Authorization
+
+`can()` names a Gate ability. It is checked with `Gate::authorize()` on the page itself **and** on every endpoint that belongs to it, so a user without the ability gets a 403 for the page, its forms and its actions alike. The same check removes the page from that user's navigation.
+
+```php
+public static function can(): ?string
+{
+    return 'manage-invoices';
+}
+```
+
+`middleware()` replaces the panel's auth layer for the page and its whole endpoint cluster. Returning `['web']` makes a page public inside an authenticated panel, which is how a login screen is built. Spread `$panel->authStack()` to add middleware instead of replacing it:
+
+```php
+use Tbtop\Admin\Panels\PanelConfig;
+
+public static function middleware(PanelConfig $panel): ?array
+{
+    return [...$panel->authStack(), 'verified'];
+}
+```
+
+Pair a public page with a `layout()` that returns `'center'` to drop the sidebar and header. Any value other than `'admin'` or `'center'` throws.
+
+### Route parameters
+
+A parameter in `path()` arrives as a plain string — there is no route-model binding. Read it with `request()->route()` inside `view()`, and from `$ctx->params` inside a handler, where the server derives it from the URL:
+
+```php
+public static function path(): string
+{
+    return 'invoices/{invoice}/edit';
+}
+
+public function view(S $s): Node
+{
+    $invoice = Invoice::findOrFail(request()->route('invoice'));
+    // …
+}
+```
+
+A `findOrFail()` miss in `view()` renders a 404 inside the panel chrome. Pages with a parameter in their path never appear in the navigation.
+
+Each page's route is named `tbtop.{panel id}.{slug}`, so a link can be built with `route('tbtop.admin.invoice-edit-page', ['invoice' => $id])` instead of a hard-coded string. Renaming the class changes the default slug; override `slug()` if other code depends on it.
+
+### Breadcrumbs
+
+By default the trail is the page's nav group followed by its title, with the group linked to the first parameter-free page in the same group. A page outside the nav, or in no group, gets its title only. Override `breadcrumbs()` to spell the trail out, typically for a create or edit page that sits under an index:
+
+```php
+public function breadcrumbs(): array
+{
+    return [
+        ['label' => 'Invoices', 'url' => '/admin/invoices'],
+        ['label' => $this->title()],
+    ];
+}
+```
+
+The panel can switch breadcrumbs off with `->breadcrumbs(false)`.
+
+## Building the tree with S
+
+`view()` receives an `S` instance. It is the factory for everything on the page:
+
+- **Layout** — `stack`, `row`, `flex`, `grid`, `section`, `collapsible`, `aside`, `tabs`.
+- **Display** — `displayText`, `displayAlert`, `displayValue`, `displayKeyValue`, `displayImage`, `markdown`, `displayDivider`.
+- **Data** — `form`, `table`, `action`, `stat`, `chart`, `list`, `liveRegion`, `actionsRow`.
+- **Fields** — `$s->text('name')`, `$s->select('status')` and the rest of the [field kinds](/docs/authoring/fields).
+
+`stack`, `row`, `grid`, `section`, `collapsible`, `aside` and `tabs` take an options array whose keys are validated: an unknown key throws instead of shipping silently, and `section` even suggests `'title'` when you pass `'label'`. `flex` takes named arguments instead (`$s->flex($children, direction: 'col', gap: 4)`), and `actionsRow` reads only a `variant` key and ignores anything else.
+
+```php
+$s->grid(['cols' => ['sm' => 1, 'lg' => 3], 'gap' => 6], [
+    $s->section(['title' => 'Customer', 'variant' => 'card', 'colSpan' => 2], [
+        $s->displayKeyValue(['Name' => $customer->name, 'Email' => $customer->email]),
+    ]),
+    $s->section(['title' => 'Status', 'variant' => 'card'], [
+        $s->displayValue($invoice->status)->badge(['paid' => Color::Success, 'draft' => Color::Gray]),
+    ]),
+]);
+```
+
+A `section` also accepts `description`, `icon`, `collapsible`/`collapsed`, `columns` (a grid for its own children), `aside` and a header `action` link. `aside()` is a fixed-width side column meant to sit beside the main content inside a `row()`. Every method and option is listed in the [S builder reference](/docs/api/builder).
+
+## CRUD as a family of pages
+
+A resource is a few ordinary pages that share one field definition. For an `Invoice`:
+
+| Page | `path()` | What it holds |
+|---|---|---|
+| `InvoicesIndexPage` | `invoices` | A [table](/docs/authoring/tables) with row and bulk actions and a "New" button. The only one in the nav. |
+| `InvoiceCreatePage` | `invoices/new` | A form whose `onSubmit` creates the record and redirects to its edit page |
+| `InvoiceEditPage` | `invoices/{invoice}/edit` | The same form, pre-filled, plus delete |
+
+Put the fields in a trait so create and edit cannot drift apart. Usually the only difference is the `unique` rule, which must ignore the record being edited:
+
+```php
+trait InvoiceFormFields
+{
+    protected function invoiceFields(S $s, ?int $ignoreId = null): array
+    {
+        $number = $s->text('number')->label('Number')->required()->unique('invoices');
+
+        return [
+            $s->section(['title' => 'Invoice'], [
+                $ignoreId === null ? $number : $number->ignore($ignoreId),
+                $s->date('due_on')->label('Due on')->rules('nullable|date'),
+                $s->textarea('notes')->label('Notes'),
+            ]),
+        ];
+    }
+}
+```
+
+The create page redirects by returning a string from `onSubmit`:
+
+```php
+public function view(S $s): Node
+{
+    return $s->stack([
+        $s->form('invoice', [
+            ...$this->invoiceFields($s),
+            FormActions::saveCancel($s, '/admin/invoices', saveLabel: 'Create'),
+        ])
+            ->record(['number' => '', 'due_on' => null, 'notes' => null])
+            ->onSubmit(function (ActionCtx $ctx): string {
+                $invoice = Invoice::create($ctx->form);
+
+                return "/admin/invoices/{$invoice->id}/edit";
+            }),
+    ]);
+}
+```
+
+The edit page pre-fills from the model, saves in place and offers a delete that leaves the page:
+
+```php
+public function view(S $s): Node
+{
+    $invoice = Invoice::findOrFail(request()->route('invoice'));
+
+    return $s->stack([
+        $s->form('invoice', [
+            ...$this->invoiceFields($s, $invoice->id),
+            FormActions::saveCancel($s, '/admin/invoices', extra: [
+                $s->action('delete')->label('Delete')->color('danger')
+                    ->confirm('Delete invoice?', 'This cannot be undone.')
+                    ->handle(function (ActionCtx $ctx): Effects {
+                        Invoice::whereKey($ctx->params['invoice'])->delete();
+
+                        return Effects::make()->notify('Invoice deleted')->redirect('/admin/invoices');
+                    }),
+            ]),
+        ])
+            ->record([
+                'number' => $invoice->number,
+                'due_on' => $invoice->due_on?->format('Y-m-d'),
+                'notes' => $invoice->notes,
+            ])
+            ->onSubmit(function (ActionCtx $ctx): Effects {
+                Invoice::findOrFail($ctx->params['invoice'])->update($ctx->form);
+
+                return Effects::make()->notify('Saved');
+            }),
+    ]);
+}
+```
+
+How the form, its record and its submit behave is covered in [Forms](/docs/authoring/forms); buttons and effects in [Actions](/docs/authoring/actions). For small records you can skip the separate pages: `CreateAction` and `EditAction` open the same kind of form in a modal from the index table.
+
+See it in the demo: the posts [index](https://demo.tbtop.dev/admin/posts) and [create](https://demo.tbtop.dev/admin/posts/new) pages are built this way.
+
+## Gotchas
+
+- **`nav()` returning `null` only hides the menu entry.** The route stays registered and reachable. Use `can()` to restrict access.
+- **Overlapping parameterized paths.** `invoices/{invoice}` and `invoices/new` both match `/admin/invoices/new`; routes match in registration order, so list the static page first in `pages()`. With discovery, discovered pages register after any `pages()` entries, in class-name order; listing the static page in `pages()` works in a discovering panel too, because duplicates are removed. A panel that uses discovery rejects duplicate slugs and identical paths outright.
+- **The page index hides new pages.** Once `php artisan tbtop:cache-pages` has written `bootstrap/cache/tbtop-pages.php`, discovery reads that index instead of scanning, in any environment. A page added after that stays invisible (404, missing from the menu) until you rerun the command, then `route:cache`. A deleted page triggers a rescan automatically. See [Deploy](/docs/getting-started/deploy).
+- **Imports.** `Node`, `S` and `Color` live in `Tbtop\Admin\Dsl`; `ActionCtx` and `Effects` in `Tbtop\Admin\Actions`; `FormActions` in `Tbtop\Admin\Dsl\Actions`.

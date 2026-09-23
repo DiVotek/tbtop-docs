@@ -1,5 +1,192 @@
 ---
 title: "Navigation"
+description: "How the panel menu is built from each page's nav() declaration, and how to configure groups, icons, badges, nesting, extra links, the user menu and the command palette."
 ---
 
-This page is being written.
+The panel's menu is not a separate config file. Each page declares its own place in it with a static `nav()` method, and the panel adds group metadata, extra links and the command palette on top. The menu is rebuilt on every request for the current user, so pages the user cannot open are simply not in it.
+
+## Putting a page in the menu
+
+```php
+use Tbtop\Admin\Dsl\Color;
+
+public static function nav(): ?array
+{
+    return [
+        'group' => 'Sales',
+        'label' => 'Orders',
+        'order' => 1,
+        'icon' => 'shopping-cart',
+    ];
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `group` | The group the item is listed under. Omit it for an ungrouped item. |
+| `label` | Menu text. Defaults to the page's slug, so set it. |
+| `order` | Sort position inside the group; lower comes first. Defaults to `0`. |
+| `icon` | A kebab-case [Lucide](https://lucide.dev/icons) name, or `['name' => 'shopping-cart', 'position' => 'right']`. |
+| `badge` | A short string shown beside the label — a count, "New". |
+| `badgeColor` | A `Color` case (`Color::Danger`, `Color::Warning`, …) or its string value. Only used with `badge`. |
+| `parent` | Another page class to nest this item under. |
+
+A page is left out of the menu when:
+
+- `nav()` returns `null` — the default;
+- its `path()` contains a route parameter (`orders/{order}/edit`), since the menu has no value to fill in;
+- its `can()` gate fails for the current user.
+
+Leaving a page out of the menu does not remove its route. Access control is `can()`; see [Pages](/docs/authoring/pages#authorization).
+
+`nav()` is evaluated per request, so a translated label such as `__('Orders')` follows the user's locale.
+
+See it in the demo: the [Posts](https://demo.tbtop.dev/admin/posts) entry carries an icon and a count badge, and [Soft deletes](https://demo.tbtop.dev/admin/soft-deletes) a red "New" badge.
+
+## Badges
+
+A badge is computed wherever `nav()` runs — on every page load and every form submit. A count badge is fine as long as the query is cheap:
+
+```php
+public static function nav(): ?array
+{
+    $open = Ticket::where('status', 'open')->count();
+
+    return [
+        'group' => 'Support',
+        'label' => 'Tickets',
+        'icon' => 'life-buoy',
+        'badge' => $open > 0 ? (string) $open : null,
+        'badgeColor' => Color::Warning,
+    ];
+}
+```
+
+The badge value is cast to a string, so a count of zero still renders as a "0" badge. Return `null` (or leave `badge` out) when there is nothing to show, as above. There is no polling: the number updates on the next navigation.
+
+`nav()` can run several times in one request: once for every page while the menu is built, and again when the breadcrumbs are resolved. A count query in it runs each of those times, so cache or memoise anything that is not cheap.
+
+## Groups
+
+Groups exist as soon as a page names one. To give a group an icon, make it collapsible, or fix its position, declare it on the panel:
+
+```php
+use Tbtop\Admin\Navigation\NavGroup;
+
+$panel->navigationGroups([
+    NavGroup::make('Sales')->icon('shopping-cart'),
+    NavGroup::make('Catalog')->icon('package')->collapsible(),
+    NavGroup::make('System')->icon('settings')->collapsed(),
+]);
+```
+
+- **Order.** Groups appear in the order declared here. A group that pages use but this list does not mention comes after all declared ones, in the order it was first seen.
+- **Ungrouped items come first.** Items without a `group` form one bucket with no heading, rendered above every group — the place for a Dashboard link.
+- **Collapse.** `collapsible()` turns the group heading into a toggle; `collapsed()` also starts it closed.
+- **Translated headings.** The string passed to `make()` is a stable key that pages match with `'group' => 'Sales'`. Set the displayed text with `->label()`, and pass a closure so it is translated per request — the panel config is built once, so a bare `__()` there would freeze on the first request's locale:
+
+```php
+NavGroup::make('Sales')->label(fn () => __('admin.nav.sales')),
+```
+
+## Nesting a page under another
+
+`parent` nests an item under another page's item. The parent renders as a link with a chevron that expands its children:
+
+```php
+public static function nav(): ?array
+{
+    return ['group' => 'System', 'label' => 'Mail', 'order' => 2, 'parent' => SettingsPage::class];
+}
+```
+
+The parent must itself be a menu-eligible page in the same panel: registered, with a `nav()` and no route parameter. A parent that is not, or a chain of parents that loops back, throws while the menu is built — for every user, so a typo fails immediately instead of hiding an item for some people. While nested, the child's own `group` is not used. It matters in one case: if the current user's gate rejects the parent but allows the child, the child moves up to the top level of its own group instead of disappearing.
+
+## Links that are not pages
+
+`navigationItems()` adds entries that have no page behind them, typically external links. They are always shown — there is no gate — and are grouped by the same group key as pages:
+
+```php
+use Tbtop\Admin\Navigation\NavItem;
+
+$panel->navigationItems([
+    NavItem::make('Status page')->url('https://status.example.com')
+        ->icon('activity')->group('Resources')->newTab(),
+]);
+```
+
+`NavItem` also has `->sort(int)` for its position within the group.
+
+The profile dropdown in the header takes the same `NavItem` links through `userMenuItems()`. They render between the user's name and the built-in theme, locale and logout controls. These are links only — no server handler — and `group`/`sort` do not apply:
+
+```php
+$panel->userMenuItems([
+    NavItem::make('Profile')->url('/admin/profile')->icon('user'),
+]);
+```
+
+## Menu layout
+
+Where the menu appears is a panel setting:
+
+```php
+$panel->navigation('topbar');
+```
+
+`'sidebar'` is the default. `'topbar'` puts the groups in a horizontal bar, and `'topbar-sidebar'` combines a full-width bar with a sidebar beneath it. The same `nav()` declarations drive all three, and every layout collapses to a burger drawer on small screens. The shell itself — logo, menu, header buttons — can be rearranged with a `Chrome` class; see [Panel](/docs/getting-started/panel).
+
+## Icons
+
+Icon names are Lucide names in kebab case: `file-text`, `shopping-cart`, `circle-check`. Every Lucide icon is available without registration. To add a name of your own — an alias, or an icon component with the Lucide component type — register it in the admin client entry and then refer to that name from PHP:
+
+```ts
+import { registerIcon } from "@tbtop/inertia-admin";
+import { Rocket } from "lucide-react";
+
+registerIcon("launch", Rocket);
+```
+
+Importing from `lucide-react` in your own code means adding it to the host's `package.json`; the client package depends on it but does not re-export it.
+
+The same names work for nav items, groups, palette commands, actions and table cells.
+
+## Command palette
+
+Every panel has a command palette, opened with <kbd>⌘</kbd>+<kbd>K</kbd> (<kbd>Ctrl</kbd>+<kbd>K</kbd> elsewhere). Out of the box it lists the menu's destinations — the ones the current user can see — and filters them as you type. Add your own commands on the panel:
+
+```php
+use Tbtop\Admin\CommandPalette\Command;
+use Tbtop\Admin\CommandPalette\CommandPaletteConfig;
+
+$panel->commandPalette(fn (CommandPaletteConfig $palette) => $palette
+    ->placeholder('Jump to…')
+    ->commands([
+        Command::make('New order')->url('/admin/orders/new')
+            ->icon('plus')->group('Actions')->keywords(['create', 'checkout']),
+        Command::make('API documentation')->url('https://docs.example.com')
+            ->group('Links')->openInNewTab(),
+    ]));
+```
+
+A command either navigates to a `url()` — an internal path loads as an in-app visit, an external one as a normal page load — or runs a client-side handler. For a handler, name it in PHP with `->handler('copy-link')` and define it in the client entry (`resources/js/admin.tsx`):
+
+```ts
+import { definePaletteCommand } from "@tbtop/inertia-admin";
+
+definePaletteCommand("copy-link", async () => {
+    await navigator.clipboard.writeText(window.location.href);
+});
+```
+
+A handler runs in the browser only. Server work belongs in a page [action](/docs/authoring/actions), which a command can reach by navigating to its page.
+
+Other settings on `CommandPaletteConfig`: `hotkey('mod+p')` changes the shortcut, `includeNav(false)` lists only your commands, and `disable()` — or `$panel->commandPalette(false)` — removes the palette from the panel.
+
+Things the palette does not do at this release:
+
+- **It does not search records.** It matches the labels and keywords of menu items and commands; finding an order by number is a table search.
+- **External menu links open as in-app visits.** Links added with `navigationItems()` show up in the palette like any menu item, but choosing one runs an Inertia visit rather than a normal page load or a new tab. To offer an external link from the palette, use `includeNav(false)` and add a command with `url()` (plus `openInNewTab()` if needed).
+- **Nested items are not listed.** Only top-level menu items become palette entries; a page nested with `parent` is reached through its parent.
+- **Commands are not gated.** Every user sees every command, so a command should point at a page that enforces its own `can()`.
+
+The full `PanelConfig`, `NavGroup`, `NavItem`, `CommandPaletteConfig` and `Command` method lists are in the [panel reference](/docs/api/panel).
