@@ -117,7 +117,7 @@ $panel->navigationItems([
 
 `NavItem` also has `->sort(int)` for its position within the group.
 
-The profile dropdown in the header takes the same `NavItem` links through `userMenuItems()`. They render between the user's name and the built-in theme, locale and logout controls. These are links only — no server handler — and `group`/`sort` do not apply:
+The profile dropdown in the header takes the same `NavItem` links through `userMenuItems()`. They render below the user's name, above the built-in language section (shown when the panel has two or more interface locales) and the Log out item. These are links only — no server handler — and `group`/`sort` do not apply:
 
 ```php
 $panel->userMenuItems([

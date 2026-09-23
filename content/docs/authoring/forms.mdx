@@ -127,7 +127,7 @@ use Illuminate\Validation\ValidationException;
 
 The handler returns one of two things:
 
-- **An `Effects` chain** — stay on the page and tell the client what to do: `Effects::make()->notify('Saved')`, optionally with `->redirect($url)` to move on after a toast. The full effect set is in [Actions](/docs/authoring/actions).
+- **An `Effects` chain** — stay on the page and tell the client what to do: `Effects::make()->notify('Saved')`, optionally with `->redirect($url)` to move on after a toast. From `onSubmit` only `notify`, `redirect`, `refreshTable`, `copyToClipboard` and `closeModal` take effect. `setFormData`, `resetForm` and `haltModal` need an action's form or modal context: they are ignored here with a console warning. Use a `handle()` action with `needs: ['form']` for those. The full effect set is in [Actions](/docs/authoring/actions).
 - **A string** — a plain redirect to that URL, with no toast. This is the usual end of a create form: `return "/admin/orders/{$order->id}/edit";`.
 
 ## Layout inside a form

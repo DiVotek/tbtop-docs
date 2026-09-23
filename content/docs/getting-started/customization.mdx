@@ -191,7 +191,7 @@ class AdminChrome extends Chrome
     {
         return [
             $s->notifications(),
-            $s->action('view-site')->label('View site')->visit('/'),
+            $s->action('view-site')->label('View site')->visit('/', newTab: true), // a same-origin visit() is an Inertia visit, and the admin bundle cannot render the site's pages
             $s->themeToggle(),
             ...parent::headerItems($s), // the user menu, kept last so it sits at the far right
         ];
