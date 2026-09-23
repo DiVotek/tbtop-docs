@@ -47,10 +47,6 @@ return [
 
 `app/Admin/Pages` must exist before this boots. A discovery directory that does not exist throws. Once a page is in it, the panel answers under `/admin`. [Your first page](/docs/getting-started/first-page) walks through creating one.
 
-<Callout type="warn" title="Discovery alone picks the landing page alphabetically">
-  `/admin` redirects to the first registered page with a static path, and with discovery alone that is the alphabetically first class name. A `LoginPage` sorts ahead of `PostsPage`, so signed-in users would land on the sign-in form. See [Identity and routing](#identity-and-routing) and [Make it the landing page](/docs/getting-started/first-page#make-it-the-landing-page).
-</Callout>
-
 ## Identity and routing
 
 | Method | Default | What it controls |
@@ -67,7 +63,9 @@ An empty id throws when the panel registry is built, and so does a second panel 
   The id feeds every route name, and every route name is part of the panel's contract. `route()` calls, redirects and tests that name `tbtop.admin.*` break when the id changes. Choose the id once. The prefix can change more freely. Leave `prefix()` unset and it follows the id.
 </Callout>
 
-The panel root (`/admin`) redirects to the first registered page whose path has no route parameters. Pages listed in `pages()` come before discovered ones, so list your dashboard first there to make it the landing page. Discovered pages follow in alphabetical class-name order, so without `pages()` the landing page is whichever static page sorts first. If a page's `path()` is the empty string, that page owns the root and no redirect is registered.
+The panel root (`/admin`, also the logo link) redirects to the first registered page whose path has no route parameters. Declare your landing page first in `pages()`: explicit pages come before discovered ones, and discovered pages follow in alphabetical class-name order. The redirect does not look at page middleware, so a public page such as a login page can be picked if it comes first. If a page's `path()` is the empty string, that page owns the root and no redirect is registered.
+
+A login page whose `middleware()` returns `['web']` without `guest` stays reachable to signed-in users, who see the form again. To send them into the panel instead, add `'guest'` to its stack (`'guest:{guard}'` when the panel's `guard()` is not the default) and scope `redirectUsersTo()` in `bootstrap/app.php` the way [Authentication](/docs/getting-started/authentication#send-guests-to-it) scopes `redirectGuestsTo()`, because it changes the redirect for every `guest` route in the app: return your landing page's URL, such as `/admin/posts`, for `$request->is('admin', 'admin/*')`, not `/admin`, which can redirect back to the login page.
 
 ## Pages: explicit or discovered
 

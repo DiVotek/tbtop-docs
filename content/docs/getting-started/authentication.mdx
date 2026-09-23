@@ -9,11 +9,11 @@ A panel checks authentication, but it does not perform it. Every page runs behin
 2. a `POST {prefix}/logout` route for the user menu,
 3. the signed-in user shared as the `auth.user` Inertia prop.
 
-## Why the login page belongs inside the panel
+## Write the login page with the DSL
 
-Your admin pages run in the admin JavaScript bundle (`resources/js/admin.tsx`), which resolves only `admin/*` components. A login screen rendered by your main Inertia app lives in a different bundle. Signing in there and then redirecting into the panel is an Inertia visit across bundles, and it fails in the browser.
+A login page written with the DSL is an ordinary admin page. It renders in the admin bundle like every other page, so the sign-in form, the redirect after it and the page the user lands on all stay in one Inertia app. This is the recommended path, and the reference demo takes it: a public page on the chrome-less `center` layout.
 
-The simplest fix is to write the login screen as an ordinary admin page: a public page on the chrome-less `center` layout. The reference demo does exactly this.
+The exception is a login screen you already have as React in your app's own Inertia bundle, such as a Breeze screen. That bundle cannot render `admin/*` pages, so its handoff into the panel has to be a full page load. See [Using an existing auth backend](#using-an-existing-auth-backend).
 
 ## A login page
 
@@ -96,9 +96,7 @@ How it works:
 
 If the panel uses page discovery, putting this class in the discovered directory registers it. Otherwise add it to `pages()`. It is named `tbtop.admin.login-page` (the panel id plus the kebab-cased class name), and it answers at `/admin/login`.
 
-<Callout type="warn" title="Do not let the login page become the landing page">
-  `/admin` redirects to the first registered page with a static path, and discovered pages are registered in alphabetical class-name order. `LoginPage` sorts ahead of most page names, so with discovery alone `/admin` redirects to `/admin/login`. A guest who opens `/admin` gets `url.intended` set to `/admin`, signs in, is sent back to `/admin`, and lands on the sign-in form again. List your real landing page first in the panel's `pages()`, for example `->pages([PostsPage::class])` next to `discoverPages()`. [Your first page](/docs/getting-started/first-page#make-it-the-landing-page) does this once `PostsPage` exists. Until then, the flow cannot reach a page inside the panel.
-</Callout>
+The panel root redirects to the first registered page with a static path, so declare your landing page before the login page. See [Identity and routing](/docs/getting-started/panel#identity-and-routing).
 
 <Callout type="info">
   The package does not rate-limit sign-in attempts. Add Laravel's `RateLimiter` to the submit handler before you expose the panel publicly.
@@ -167,7 +165,9 @@ The menu shows `name`, and falls back to the part of `email` before the `@`. Sha
 
 ## Using an existing auth backend
 
-If your app already uses Breeze, Fortify or your own controllers, you can keep them for the credential check. Post to them from a DSL page, or call their logic from `onSubmit`. The rule that matters is the bundle boundary: the screens admin users see must render through the panel. If your app's login screen is outside the panel, the handoff between them has to be a full page load, not an Inertia visit.
+If your app already uses Breeze, Fortify or your own controllers, you can keep them for the credential check: call their logic from `onSubmit` on a DSL login page.
+
+If you keep a hand-written React login screen in your app's bundle instead, end its sign-in with a full page load into the panel. From a controller that answers an Inertia request, return `Inertia::location('/admin')`. Inertia replies with `409` and an `X-Inertia-Location` header, and the browser loads the URL from scratch. A plain `redirect()` is followed inside the app's bundle, which cannot render the admin page. A classic HTML form post (not an Inertia visit) can use a plain `redirect()`.
 
 ## See it in the demo
 
