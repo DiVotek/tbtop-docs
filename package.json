@@ -10,7 +10,8 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"format:check": "biome format .",
-		"sync:api": "tsx scripts/sync-api.ts"
+		"sync:api": "tsx scripts/sync-api.ts",
+		"check:links": "tsx scripts/check-links.ts"
 	},
 	"dependencies": {
 		"@react-router/node": "^8.4.0",
