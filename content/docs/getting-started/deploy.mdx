@@ -1,5 +1,118 @@
 ---
 title: "Deploy"
+description: "What a production deploy of a tbtop/admin app needs: matching package versions, the asset build, migrations, storage, and the page-discovery cache in the right order."
 ---
 
-This page is being written.
+Deploying a Tabletop panel is a normal Laravel deploy with a few additions. The package runs no queued jobs and needs no scheduler, cache store or long-running process of its own. What it does need is a front-end build that includes the admin entry, its media tables and storage (plus Laravel's `notifications` table if the header shows the notification bell), and, if you use page discovery, a cached page index built before the route cache.
+
+## Before you ship: pin both packages together
+
+`tbtop/admin` and `@tbtop/inertia-admin` are released together and share one wire format. A server running one version while the browser runs another produces pages that render wrong or not at all, often with no clear error. Lock both to the same release:
+
+```jsonc
+// package.json
+"@tbtop/inertia-admin": "0.5.1"
+```
+
+```jsonc
+// composer.json
+"tbtop/admin": "^0.5.1"
+```
+
+Commit `composer.lock` and `package-lock.json`, and install from them on the server (`composer install`, `npm ci`). When you upgrade, bump both in the same commit.
+
+## Build the assets
+
+```bash
+npm ci
+npm run build
+```
+
+Check three things about the build:
+
+- **`resources/js/admin.tsx` is in the Vite `input` list.** Otherwise `@vite(['resources/js/admin.tsx'])` in `admin.blade.php` has nothing in the manifest and the panel returns a server error.
+- **Tailwind scans your PHP.** `resources/css/admin.css` carries `@source '../../app/**/*.php'`, because pages write Tailwind classes from PHP. If you build the assets somewhere without the PHP source (a separate CI job or a slim Docker stage), those classes are missing from the CSS and the affected blocks render unstyled. Build where `app/` is present.
+- **No `public/hot` file on the server.** If one is left over from `npm run dev`, Laravel serves assets from the dev server URL instead of `public/build`.
+
+After a deploy, browsers still on an old bundle reload themselves on their next navigation. Inertia's default asset version is a hash of `public/build/manifest.json`, so it changes with every build that changes the output. You need no extra step for this.
+
+## Migrate, and link storage
+
+```bash
+php artisan migrate --force
+php artisan storage:link
+```
+
+The package's media-library migrations load from the vendor directory and run with yours. The media library stores files on the disk named in `config/tbtop-admin.php` under `media.disk`, which is `public` by default. For those files to have working URLs, `public/storage` has to link to that disk, which is what `storage:link` does. On a symlinked-release deploy (Forge, Envoyer, Deployer), keep `storage/` shared between releases so uploads survive a deploy.
+
+To generate image variants (the `thumb` profile and any others under `media.profiles`), the server needs the PHP GD extension. Without GD, uploads still work, but no variants are generated.
+
+## Cache in the right order
+
+Laravel's usual caches work with the package:
+
+- **`config:cache`** is safe. `config/tbtop-admin.php` holds only class names and scalars.
+- **`route:cache`** is safe. Every package route points at a controller class, and the panel-root redirect is built so it can be cached.
+
+If a panel uses `discoverPages()`, build the discovery index **before** the route cache:
+
+```bash
+php artisan tbtop:cache-pages
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+Why the index matters even with cached routes: the panel reads its page list on every request, to build the menu and the breadcrumbs. Without the index, each request walks the discovery directories on disk. `tbtop:cache-pages` writes that list to `bootstrap/cache/tbtop-pages.php` once.
+
+Facts about the index worth knowing:
+
+- **`php artisan optimize` does not build it**, and `optimize:clear` does not remove it. Run `tbtop:cache-pages` explicitly, and before `optimize` if you use that.
+- **Rebuild it on every deploy that adds, moves, renames or removes a page**, or that changes a page's `isDiscovered()`. The simplest rule is to run it on every deploy. A new page missing from a stale index is not routed.
+- **It survives symlinked releases.** Paths inside the app are stored relative to the project root, so an index built in one release directory still applies after the symlink moves.
+- **A stale index degrades instead of failing.** If the index names a class that no longer exists, it is ignored and the directories are scanned again. The rebuild is also atomic: a failed `tbtop:cache-pages` leaves the previous index in place.
+- **It holds class names only.** Gates, middleware and page output are evaluated live on every request.
+
+Panels that list pages only through `pages()` have no index to build, and `tbtop:cache-pages` has nothing to do for them.
+
+The route cache freezes each panel's prefix, middleware and page paths. Any change to a panel class, or to the `panels` list in the config, needs a fresh `route:cache` to take effect.
+
+To go back to uncached behaviour, for example while debugging on a server:
+
+```bash
+php artisan tbtop:clear-cached-pages
+php artisan route:clear
+```
+
+## Restart workers
+
+If you run Octane or another long-lived PHP process, restart it after each deploy. A worker keeps the page list it loaded at boot. Queue workers need the usual `queue:restart` if your own handlers dispatch jobs, but the package does not queue anything itself.
+
+## A deploy script
+
+Put together, for a panel with page discovery:
+
+```bash
+composer install --no-dev --optimize-autoloader
+npm ci
+npm run build
+
+php artisan migrate --force
+php artisan storage:link        # once per server; harmless to repeat
+
+php artisan tbtop:cache-pages   # before route:cache
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+php artisan octane:reload       # only if you run Octane
+```
+
+## Production checklist
+
+- The Inertia middleware is in the `web` group and shares `auth.user` (see [Install](/docs/getting-started/install#set-up-inertia-on-the-server) and [Authentication](/docs/getting-started/authentication)).
+- Guests are redirected to a login page inside the panel, and `POST {prefix}/logout` exists.
+- The panel is limited to staff, not merely to signed-in users. See [access control](/docs/getting-started/panel#access-control).
+- Sign-in is rate-limited. The package does not do this for you.
+- `media.url_import.allowed_hosts` in `config/tbtop-admin.php` is set if editors should import media only from known hosts. Empty means any host that passes the built-in SSRF guard.
+- `media.accept` and `media.max_size` match what editors should be able to upload. `max_size` is in kilobytes. Uploaded SVGs are sanitized on the server, and HTML files are always refused.

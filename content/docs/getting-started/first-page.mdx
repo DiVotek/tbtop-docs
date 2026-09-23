@@ -1,5 +1,331 @@
 ---
-title: "First page"
+title: "Your first page"
+description: "Build a list, a create form and an edit form for a Post model, from the make:tbtop-page scaffold to a working save."
 ---
 
-This page is being written.
+A page is a PHP class that extends `Tbtop\Admin\Pages\Page`. It declares a URL with `path()` and describes its content in `view()`, using the `S` builder that the framework passes in. On each request the page is serialized to JSON and sent as Inertia props, and the React client renders it. You write no JavaScript for any of this.
+
+This guide builds three pages for a `Post` model: a table of posts, a create form and an edit form. It assumes you finished [Install](/docs/getting-started/install) and have a panel with page discovery on `app/Admin/Pages`, as in [Register a panel](/docs/getting-started/panel).
+
+## The model
+
+A plain Eloquent model and migration. Nothing here is specific to Tabletop.
+
+```php
+// database/migrations/xxxx_xx_xx_create_posts_table.php
+Schema::create('posts', function (Blueprint $table) {
+    $table->id();
+    $table->string('title');
+    $table->text('body')->nullable();
+    $table->boolean('published')->default(false);
+    $table->timestamps();
+});
+```
+
+```php
+// app/Models/Post.php
+class Post extends Model
+{
+    protected $fillable = ['title', 'body', 'published'];
+
+    protected function casts(): array
+    {
+        return ['published' => 'boolean'];
+    }
+}
+```
+
+## Scaffold the list page
+
+```bash
+php artisan make:tbtop-page Posts
+```
+
+The command appends `Page` to the name and writes `app/Admin/Pages/PostsPage.php`. It then tells you which panel discovers the file: `Panel [admin] discovers PostsPage. Run tbtop:cache-pages if the page index is cached.` A cached page index does not see new pages until you rebuild it, see [Deploy](/docs/getting-started/deploy). If no panel scans that directory, it prints `Register PostsPage with pages() — no panel discovers [...]`, and you add the class to the panel's `pages()` yourself. The scaffold looks like this:
+
+```php
+class PostsPage extends Page
+{
+    public static function path(): string
+    {
+        return 'posts';
+    }
+
+    public static function nav(): ?array
+    {
+        return ['group' => 'Main', 'label' => 'Posts'];
+    }
+
+    public function view(S $s): Node
+    {
+        return $s->stack([
+            $s->displayText('Posts')->variant('heading'),
+        ]);
+    }
+}
+```
+
+Open `/admin/posts` and the page is there, with a "Posts" link under a "Main" group in the menu. The page header reads "Posts Page", the default title built from the class name, above the "Posts" heading from `displayText()`. The next step overrides `title()` and removes the duplicate. `path()` is relative to the panel prefix. `nav()` places the page in the menu. Return `null` to leave it out.
+
+The command's options:
+
+| Option | Effect |
+|---|---|
+| `--path=` | The route path. Default: the kebab-cased name (`posts`). |
+| `--group=` | The menu group label. Default: `Main`. |
+| `--no-nav` | Generate `nav()` returning `null`, so the page stays out of the menu. |
+| `--force` | Overwrite an existing file. |
+
+## Show a table
+
+Replace the class body with a table:
+
+```php
+<?php
+
+namespace App\Admin\Pages;
+
+use App\Models\Post;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Dsl\Actions\DeleteAction;
+use Tbtop\Admin\Dsl\Column;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Pages\Page;
+
+class PostsPage extends Page
+{
+    public static function path(): string
+    {
+        return 'posts';
+    }
+
+    public static function nav(): ?array
+    {
+        return ['group' => 'Content', 'label' => 'Posts', 'icon' => 'file-text'];
+    }
+
+    public function title(): string
+    {
+        return 'Posts';
+    }
+
+    public function headerActions(S $s): array
+    {
+        return [
+            $s->action('new')->label('New post')->color('primary')->visit('/admin/posts/new'),
+        ];
+    }
+
+    public function view(S $s): Node
+    {
+        return $s->stack([
+            $s->table('posts')
+                ->columns([
+                    Column::make('title')->label('Title')->sortable()->searchable(),
+                    Column::make('published')->label('Published')->boolean(),
+                    Column::make('created_at')->label('Created')->date('Y-m-d')->sortable(),
+                ])
+                ->defaultSort('created_at', 'desc')
+                ->query(fn () => Post::query()->select(['id', 'title', 'published', 'created_at']))
+                ->recordUrl(fn (Post $post): string => "/admin/posts/{$post->id}/edit")
+                ->rowActions([
+                    DeleteAction::make($s, using: function (ActionCtx $ctx): void {
+                        Post::whereKey($ctx->row['id'] ?? null)->delete();
+                    }),
+                ])
+                ->toNode(),
+        ]);
+    }
+}
+```
+
+What each part does:
+
+- **`title()`** sets the page heading and the browser title. Without it, the heading is the class name as words: "Posts Page".
+- **`headerActions()`** puts buttons next to the heading. `visit()` is a client-side navigation to a fixed URL.
+- **`$s->table('posts')`** names the table. The name is part of its data endpoint URL, so keep it unique on the page.
+- **`columns()`** takes `Column` objects. A column with no display kind prints its value as text. `boolean()` and `date()` set a kind, and each column has only one kind.
+- **`query()`** returns a fresh Eloquent builder. Sorting, search and pagination (25 rows per page by default) run against it as SQL, and rows load from a JSON endpoint as the user pages and sorts.
+- **`recordUrl()`** makes each row a link. The closure receives the Eloquent model.
+- **`DeleteAction::make()`** is a prebuilt row action. It is styled as a danger action, asks for confirmation, and after the closure runs it shows a notification and refreshes the table.
+
+`icon` in `nav()` takes any [Lucide](https://lucide.dev/icons) icon name in kebab case.
+
+## Make it the landing page
+
+`/admin` redirects to the first registered page with a static path. Discovered pages register in alphabetical class-name order, so with discovery alone the panel root would go to `/admin/login` (`LoginPage`) or, later, `/admin/posts/new` (`PostCreatePage`). List the page you want users to land on first in the panel's `pages()`:
+
+```php
+// app/Admin/AdminPanel.php
+use App\Admin\Pages\PostsPage;
+
+return $panel
+    ->id('admin')
+    ->prefix('admin')
+    ->rootView('admin')
+    ->pages([PostsPage::class])
+    ->discoverPages(
+        in: app_path('Admin/Pages'),
+        for: 'App\\Admin\\Pages',
+    );
+```
+
+The page is still in the discovered directory. Duplicates are removed, so it registers once, first. After sign-in, `/admin` now lands on the posts table.
+
+## Add a create page
+
+```bash
+php artisan make:tbtop-page PostCreate --path=posts/new --no-nav
+```
+
+```php
+<?php
+
+namespace App\Admin\Pages;
+
+use App\Models\Post;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Dsl\Actions\FormActions;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Pages\Page;
+
+class PostCreatePage extends Page
+{
+    public static function path(): string
+    {
+        return 'posts/new';
+    }
+
+    public static function nav(): ?array
+    {
+        return null;
+    }
+
+    public function title(): string
+    {
+        return 'New post';
+    }
+
+    public function view(S $s): Node
+    {
+        return $s->stack([
+            $s->form('post', [
+                $s->text('title')->label('Title')->required()->rules('max:200'),
+                $s->textarea('body')->label('Body'),
+                $s->boolean('published')->label('Published')->rules('boolean'),
+                FormActions::saveCancel($s, '/admin/posts', saveLabel: 'Create'),
+            ])
+                ->record(['title' => '', 'body' => null, 'published' => false])
+                ->onSubmit(function (ActionCtx $ctx): string {
+                    $post = Post::create($ctx->form);
+
+                    return "/admin/posts/{$post->id}/edit";
+                }),
+        ]);
+    }
+}
+```
+
+- **`$s->form('post', [...])`** is a form named `post`. Its children are fields, layout blocks and actions.
+- **Validation is Laravel's.** `required()` adds the `required` rule and marks the field. `rules()` adds any Laravel rule. On submit the server validates, and errors appear under the fields. The client also checks the simple rules on blur, but only as a convenience: the server check is the one that counts.
+- **`record()`** sets the initial values. A key you leave out falls back to the field's `default()`, if it has one.
+- **`onSubmit()`** runs after validation passes. `$ctx->form` holds only the validated fields. Returning a string redirects there. Returning `Effects` (shown next) keeps the user on the page.
+- **`FormActions::saveCancel()`** renders a Save button (with the `mod+s` shortcut) that submits the form, and a Cancel button that goes to the given URL.
+
+A field with no rules at all is still included in `$ctx->form`: it gets a `nullable` rule automatically. Otherwise Laravel would drop it from the validated data.
+
+## Add an edit page
+
+```bash
+php artisan make:tbtop-page PostEdit --path="posts/{post}/edit" --no-nav
+```
+
+```php
+<?php
+
+namespace App\Admin\Pages;
+
+use App\Models\Post;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+use Tbtop\Admin\Dsl\Actions\FormActions;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Pages\Page;
+
+class PostEditPage extends Page
+{
+    public static function path(): string
+    {
+        return 'posts/{post}/edit';
+    }
+
+    public static function nav(): ?array
+    {
+        return null;
+    }
+
+    public function title(): string
+    {
+        return 'Edit post';
+    }
+
+    public function headerActions(S $s): array
+    {
+        return [
+            $s->action('delete')->label('Delete')->color('danger')
+                ->confirm('Delete this post?', 'This cannot be undone.')
+                ->handle(function (ActionCtx $ctx): Effects {
+                    Post::whereKey($ctx->params['post'])->delete();
+
+                    return Effects::make()->notify('Post deleted')->redirect('/admin/posts');
+                }),
+        ];
+    }
+
+    public function view(S $s): Node
+    {
+        $post = Post::findOrFail(request()->route('post'));
+
+        return $s->stack([
+            $s->form('post', [
+                $s->text('title')->label('Title')->required()->rules('max:200'),
+                $s->textarea('body')->label('Body'),
+                $s->boolean('published')->label('Published')->rules('boolean'),
+                FormActions::saveCancel($s, '/admin/posts'),
+            ])
+                ->record($post->only(['title', 'body', 'published']))
+                ->onSubmit(function (ActionCtx $ctx): Effects {
+                    Post::findOrFail($ctx->params['post'])->update($ctx->form);
+
+                    return Effects::make()->notify('Saved');
+                }),
+        ]);
+    }
+}
+```
+
+- **Route parameters** come from `path()`. In `view()` read them from the request. In handlers use `$ctx->params`, which the server takes from the URL rather than from the client.
+- **`findOrFail()`** that misses renders the panel's "not found" page inside the admin shell. This needs the `admin/error` branch from [Install](/docs/getting-started/install#render-the-404-page).
+- **`Effects`** is what a handler returns to drive the browser: `notify`, `redirect`, `refreshTable`, `resetForm`, `closeModal` and a few more. The set is fixed. See [Actions](/docs/authoring/actions).
+- **`handle()`** makes a button call a server closure. `confirm()` asks first. Here Delete sits in the page header, next to the heading. It would work the same way inside the form's button row. It does not declare `needs: ['form']`, so it runs without validating or receiving the form.
+
+The three pages now make a working list, create and edit flow. The same shapes power the demo's posts screen: [demo.tbtop.dev/admin/posts](https://demo.tbtop.dev/admin/posts).
+
+## Gotchas
+
+- **`view()` runs on every request to the page, not only when it is displayed.** Form submits, button clicks and table fetches all rebuild the page and find their closure by name. Keep `view()` cheap and deterministic. An action that exists when the page renders must still exist when it is clicked.
+- **Closures never reach the browser.** Handlers stay on the server and are looked up by the names you give `form()`, `table()` and `action()`. Give each action on a page its own name. A second `action('delete')` replaces the first one's handler.
+- **Table rows ship the model's array form.** Every attribute that `toArray()` returns reaches the browser, not only the columns you declared. Narrow `query()` with `select()` (as above) or set `$hidden` on the model.
+- **`$ctx->row` comes from the browser.** Treat the row id as user input. If some users may only see some rows, apply the same scope in the handler that you apply in `query()`.
+- **Overlapping paths need an order.** `posts/new` and `posts/{post}/edit` never collide. `posts/new` and `posts/{post}` would, and discovered pages register in alphabetical class-name order. List such pages explicitly in the panel's `pages()`.
+- **The `/admin` prefix is hard-coded above** for readability. If the prefix may change, build URLs from route names instead. Each page's route is named `tbtop.{panel}.{slug}`, and the slug is the kebab-cased class name, so `route('tbtop.admin.post-edit-page', ['post' => $post->id], false)` returns `/admin/posts/1/edit`.
+
+## Where to go next
+
+- [Pages](/docs/authoring/pages): every hook on the `Page` class, including `can()`, `subtitle()`, `breadcrumbs()` and `layout()`.
+- [Tables](/docs/authoring/tables): filters, tabs, bulk actions, inline editing and drag-to-reorder.
+- [Forms](/docs/authoring/forms) and [Fields](/docs/authoring/fields): sections, grids, conditional fields and the 25 field kinds.
+- API reference: [Builder](/docs/api/builder), [Tables](/docs/api/tables), [Actions](/docs/api/actions), [Fields](/docs/api/fields).
