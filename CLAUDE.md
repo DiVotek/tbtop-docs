@@ -31,8 +31,10 @@ check for MDX and routes.
 
 ## Deploy
 
-`npx wrangler deploy`. `wrangler.jsonc` has no route configured — deploying
-publishes to the workers.dev subdomain only.
+`CLOUDFLARE_ACCOUNT_ID=9fc01736a7873ba44582cf173fc5a157 npx wrangler deploy` — the
+account that holds the tbtop.dev zone. `wrangler.jsonc` routes docs.tbtop.dev as a
+custom domain: Cloudflare creates its DNS record and certificate on deploy, so
+no record for that host may exist in the zone beforehand.
 
 ## Tabletop CMS
 
