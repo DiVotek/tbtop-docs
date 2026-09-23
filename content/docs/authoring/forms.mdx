@@ -132,7 +132,7 @@ The handler returns one of two things:
 
 ## Layout inside a form
 
-A form's children are laid out with the same blocks as the rest of the page. Inside a `grid` or a `section` with `columns`, a field takes `->columnSpan()` and `->columnStart()` (an int from 1 to 8, or a breakpoint map such as `['md' => 2]`):
+A form's children are laid out with the same blocks as the rest of the page ([Layout and content blocks](/docs/authoring/layout)). A form stacks its children, so to put fields side by side wrap them in a `grid` or a `section` with `columns`, where a field takes `->columnSpan()` and `->columnStart()` ([Column spans](/docs/authoring/fields#column-spans)):
 
 ```php
 $s->section(['title' => 'Address', 'columns' => 2], [

@@ -111,7 +111,7 @@ A page can also replace the panel's stack for itself and its endpoints with `pub
 
 ## The shell
 
-These settings change the chrome around every page. None of them is required.
+These settings change the chrome around every page. None of them is required. Colours, fonts, the logo and the rest of the admin's look are covered in [Customize the panel](/docs/getting-started/customization).
 
 ```php
 return $panel
@@ -131,35 +131,18 @@ return $panel
 
 - **Navigation layout.** All three layouts collapse to a drawer on small screens. An unknown value throws.
 - **Content width.** Without `maxContentWidth()`, page content is capped at `5xl`.
-- **Theme.** `defaultThemeMode()` applies only when the visitor has no saved `tbtop_theme` cookie. The published `admin.blade.php` resolves the theme before first paint and assumes `system`. If you pick another default, change that inline script too, or the page flashes once on the first visit. Colours, radius and fonts are not panel settings: they are shadcn-style CSS variables (`--primary`, `--radius`, …) that you override in `resources/css/admin.css`.
+- **Theme.** `defaultThemeMode()` applies only when the visitor has no saved `tbtop_theme` cookie. If you pick a default other than `system`, change the inline script in `admin.blade.php` too; see [Dark mode](/docs/getting-started/customization#dark-mode). Colours, radius and fonts are not panel settings: they are CSS variables in `resources/css/admin.css`, covered in [Colours](/docs/getting-started/customization#colours).
 - **UI language.** `locales()` is the language of the admin interface. The chosen locale is kept in the session. The package ships English and Ukrainian strings. With two or more locales, the user menu shows a language switcher. The languages your *content* is stored in are a different setting: `content_locales` in `config/tbtop-admin.php`.
 
 ### Header, sidebar and footer
 
-The stock shell has a logo and the navigation menu in the sidebar, and the user menu in the header. To change it, point `->chrome()` at a subclass of `Tbtop\Admin\Panels\Chrome`. Spread the parent's items to keep them:
-
-```php
-use Tbtop\Admin\Dsl\Node;
-use Tbtop\Admin\Dsl\S;
-use Tbtop\Admin\Panels\Chrome;
-
-class AdminChrome extends Chrome
-{
-    protected function headerItems(S $s): array
-    {
-        return [$s->notifications(), $s->themeToggle(), ...parent::headerItems($s)];
-    }
-
-    public function footer(S $s): ?Node
-    {
-        return $s->flex([$s->displayText('Acme admin')->variant('muted')], justify: 'center');
-    }
-}
-```
+The stock shell has a logo and the navigation menu in the sidebar, and the user menu in the header. To change it, point `->chrome()` at a subclass of `Tbtop\Admin\Panels\Chrome`:
 
 ```php
 $panel->chrome(AdminChrome::class);
 ```
+
+The subclass overrides `headerItems()`, `sidebarItems()` or `footer()` and returns ordinary DSL nodes. [Header, sidebar and footer](/docs/getting-started/customization#header-sidebar-and-footer) has a full example and the list of shell blocks.
 
 The stock header has no theme toggle. Add `$s->themeToggle()` if users should be able to switch themes. The notification bell (`$s->notifications()`) lists the signed-in user's Laravel database notifications. It needs the `notifications` table (`php artisan make:notifications-table`, then `php artisan migrate`), and your user model needs the `Notifiable` trait so notifications can be stored for it. Without the table, every poll fails with a SQL error. The bell polls every 30 seconds by default. Change the interval with `->notificationsPolling(60)`, or pass `null` to fetch only when the bell opens.
 

@@ -161,20 +161,7 @@ The panel can switch breadcrumbs off with `->breadcrumbs(false)`.
 - **Data** — `form`, `table`, `action`, `stat`, `chart`, `list`, `liveRegion`, `actionsRow`.
 - **Fields** — `$s->text('name')`, `$s->select('status')` and the rest of the [field kinds](/docs/authoring/fields).
 
-`stack`, `row`, `grid`, `section`, `collapsible`, `aside` and `tabs` take an options array whose keys are validated: an unknown key throws instead of shipping silently, and `section` even suggests `'title'` when you pass `'label'`. `flex` takes named arguments instead (`$s->flex($children, direction: 'col', gap: 4)`), and `actionsRow` reads only a `variant` key and ignores anything else.
-
-```php
-$s->grid(['cols' => ['sm' => 1, 'lg' => 3], 'gap' => 6], [
-    $s->section(['title' => 'Customer', 'variant' => 'card', 'colSpan' => 2], [
-        $s->displayKeyValue(['Name' => $customer->name, 'Email' => $customer->email]),
-    ]),
-    $s->section(['title' => 'Status', 'variant' => 'card'], [
-        $s->displayValue($invoice->status)->badge(['paid' => Color::Success, 'draft' => Color::Gray]),
-    ]),
-]);
-```
-
-A `section` also accepts `description`, `icon`, `collapsible`/`collapsed`, `columns` (a grid for its own children), `aside` and a header `action` link. `aside()` is a fixed-width side column meant to sit beside the main content inside a `row()`. Every method and option is listed in the [S builder reference](/docs/api/builder).
+How each layout and display block behaves, how grid columns and `columnSpan` interact, and which options are validated is covered in [Layout and content blocks](/docs/authoring/layout). Every method and option is listed in the [S builder reference](/docs/api/builder).
 
 ## Composing a page
 
@@ -258,7 +245,7 @@ What keeps the pieces independent:
 - **Tables keep separate state.** Sort, search, filters and page number are stored in the URL under the table's name (`t[products][…]`, `t[orders][…]`), so two tables on one page do not overwrite each other, and a reload or a shared link restores both.
 - **Effects can target another table.** `Effects::make()->refreshTable('orders')` refetches that table from any action or form submit on the page. Without a name, `refreshTable()` refreshes the table the action sits in, or every table on the page when the action is outside a table.
 - **Names are unique per kind.** A second `$s->table('orders')` replaces the first, and the same holds for forms, actions, stats and charts.
-- **Spans go on a wrapper.** Forms and tables have no `colSpan` of their own. Put them in a `section`, `stack` or `grid` and set `colSpan`/`colStart` on that, as the Products section does.
+- **Spans go on a wrapper.** Forms and tables have no `colSpan` of their own. Put them in a `section` or `stack` and set `colSpan`/`colStart` on that, as the Products section does. See [Grid columns and columnSpan](/docs/authoring/layout#grid-columns-and-columnspan).
 
 Tabs work the same way: each tab of `$s->tabs()` can hold its own form or table.
 

@@ -63,7 +63,7 @@ $s->text('street')->columnSpan(2)                  // a field
 $s->stack([...], ['colSpan' => 2, 'colStart' => 1]) // a structural block
 ```
 
-Both take the same shape as `cols`: an int from 1 to 8 or a breakpoint map. Values outside 1-8 or unknown breakpoints throw.
+Both take the same shape as `cols`: an int from 1 to 8 or a breakpoint map. Values outside 1-8 or unknown breakpoints throw. `columnSpan()` and `columnStart()` are part of the API every field shares; see [Common field API](/docs/authoring/fields#common-field-api).
 
 How the two interact:
 
@@ -317,7 +317,7 @@ What each piece does:
 - The second grid has three columns from `lg`. The orders section spans two of them with a breakpoint-matched `colSpan`; below `lg` both columns stack at full width.
 - The table is a direct child of a card section, so the card is frameless around it.
 - Inside the form, the fields are wrapped in a `grid` because a form stacks its children. `name` spans both columns from `sm`, matching the grid's own breakpoint.
-- The form, the table and the list are independent: the form's submit does not reload the table. Add `->refreshTable('orders')` to the effects when it should.
+- The form, the table and the list are independent: the form's submit does not reload the table. Add `->refreshTable('orders')` to the effects when it should. [Composing a page](/docs/authoring/pages#composing-a-page) explains what keeps forms and tables on one page independent.
 
 The demo [dashboard](https://demo.tbtop.dev/admin/dashboard) combines a stats grid, charts and content blocks the same way, and the [posts page](https://demo.tbtop.dev/admin/posts) holds two tables on one page.
 

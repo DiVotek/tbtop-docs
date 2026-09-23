@@ -103,11 +103,7 @@ $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
 
 Fields have no width of their own. They are laid out by the nearest grid around them: a `$s->grid()`, a `section` with `columns`, or a tab with `columns`. Directly inside a form or a `stack`, fields sit one per row and a span does nothing.
 
-- **`columnSpan()`** sets how many of the grid's columns the field covers. **`columnStart()`** sets the column it begins in, which leaves the columns before it empty.
-- **An int applies from the `md` breakpoint up.** Below `md`, a grid built with an int `cols` is one column and every field is full width. This matches the grid: `cols => 2` means one column on phones, two from `md`.
-- **A breakpoint array sets each size separately**: `columnSpan(['md' => 2, 'xl' => 1])`. The keys are `sm`, `md`, `lg`, `xl`, the same as a grid's `cols`, and a breakpoint you leave out inherits the smaller one.
-- **Values run from 1 to 8.** Anything else, or an unknown breakpoint key, throws when the page is built. Keep the span no wider than the grid's column count at that breakpoint.
-- **Layout blocks take the same placement** as `colSpan` and `colStart` option keys: `$s->section(['title' => 'Pricing', 'colSpan' => 2], [...])`. A form or a table has no span of its own, so wrap it in a section or stack to place it in a grid.
+`columnSpan()` sets how many of the grid's columns the field covers, and `columnStart()` the column it begins in, which leaves the columns before it empty. Both take an int from 1 to 8, which applies from the `md` breakpoint up, or a breakpoint map such as `['md' => 2, 'xl' => 1]`. Anything else throws when the page is built.
 
 ```php
 $s->section(['title' => 'Address', 'columns' => ['sm' => 1, 'md' => 6]], [
@@ -118,7 +114,7 @@ $s->section(['title' => 'Address', 'columns' => ['sm' => 1, 'md' => 6]], [
 ]),
 ```
 
-How grids, sections and tabs lay out their children is on [Layout](/docs/authoring/layout#grid-columns-and-columnspan); every option is in the [S builder reference](/docs/api/builder).
+How spans interact with a grid's breakpoints, and how layout blocks take the same placement, is on [Grid columns and columnSpan](/docs/authoring/layout#grid-columns-and-columnspan).
 
 ## Options
 
