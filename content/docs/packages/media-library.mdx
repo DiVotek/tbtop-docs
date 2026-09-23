@@ -93,7 +93,7 @@ $s->form('product', [
             MediaGalleryOptions::ids($product, 'photos'),
         ));
 
-        // Deleting what the editor deselected is your call; the field never deletes.
+        // Deleting what the editor deselected is your call; the field itself never deletes.
         $product->getMedia('photos')
             ->reject(fn ($media) => in_array((string) $media->getKey(), $picked, true))
             ->each->delete();
@@ -106,7 +106,7 @@ $s->form('product', [
 
 The value is a media id as a string, or with `multiple()` a list of ids in the order the editor picked them; an empty selection submits `null`. Like every field, it saves nothing on submit: what the ids mean — a kept set, a cover, an order — is up to your handler.
 
-In the form, the field shows the picked images as tiles and a "+" tile. Clicking a tile replaces that one image; the × on a tile removes it from the selection. The picker dialog searches the collection by media name. Non-image files in the collection show as a file icon with their extension. In a table, the cell shows the count, such as "3 images".
+In the form, the field shows the picked images as tiles and a "+" tile. Clicking a tile replaces that one image; the × on a tile removes it from the selection. The picker dialog searches the collection by media name. Non-image files in the collection show as a file icon labelled with their MIME subtype (for example `pdf`). In a table, the cell shows the count, such as "3 images".
 
 <Callout type="warn">
 The record must be saved. Spatie builds the storage path from the model key, so an upload to an unsaved model is refused with a 422. Use the field on edit pages, or drop it from a create page with `->when($product->exists)`.
@@ -114,7 +114,7 @@ The record must be saved. Spatie builds the storage path from the model key, so 
 
 ## Uploading and URL import
 
-The picker dialog has an Upload button and a URL input. Both post to `{page-path}/gallery-upload/{field}`, a route the package registers for every page of every panel in `tbtop-admin.panels`. The page's own gate applies, and the target record and collection are read from the field on the re-resolved page, never from the request, so a caller cannot redirect an upload into another model.
+The picker dialog has an Upload button and a URL input. Both post to `{page-path}/gallery-upload/{field}`, a route the package registers for every page of every panel in `tbtop-admin.panels`. The page's `can()` gate applies, but a page-level `middleware()` override does not: the upload route always runs under the panel's default stack. If a page relies on extra middleware for access control, express that check as the page's `can()` gate too. The target record and collection are read from the field on the re-resolved page, never from the request, so a caller cannot redirect an upload into another model.
 
 A stored file is added to the collection at once, before the form is saved, and is pre-selected in the dialog.
 
@@ -122,8 +122,10 @@ On the way in:
 
 - **Size.** Capped at `tbtop-admin.media.max_size` (kilobytes, 10 MiB by default), for uploads and imports alike.
 - **Type.** The detected MIME type must match the package's `accept` list. `text/html` is refused whatever the list says.
-- **Conversion.** Raster images are re-encoded to `conversion.format` with the original name and a new extension. A format GD cannot encode, or a file GD cannot decode, is stored unchanged.
-- **SVG.** A stored SVG is sanitised, detected from its content rather than its claimed type.
+- **Conversion.** Raster images are re-encoded to `conversion.format` with the original name and a new extension. GD keeps the first frame of an animated GIF and drops EXIF metadata, including orientation. Set `conversion.format` to `null` if you need animation or camera orientation preserved. A format GD cannot encode, or a file GD cannot decode, is stored unchanged.
+- **SVG.** A stored SVG is sanitised, detected from its content rather than its claimed type. An SVG that cannot be sanitised is refused with a 422 (`svg_invalid`), but v0.1.2 has already created its media row, which stays in the collection without a file. Delete such rows in your submit handler; the example above removes every unpicked row.
+
+Spatie's own checks still run after these: raising `tbtop-admin.media.max_size` above spatie's `media-library.max_file_size`, or a collection with `acceptsMimeTypes()`/`acceptsFile()`, makes a rejected upload fail with a 500 rather than a 422. Keep the two size limits aligned.
 
 URL import uses core's fetcher: private address ranges and non-HTTP schemes are blocked with DNS pinning, redirects are refused, the download aborts past the size cap, and the MIME type is checked from the downloaded bytes. The timeout (`tbtop-admin.media.url_import.timeout`, 30 seconds) and the host allowlist (`tbtop-admin.media.url_import.allowed_hosts`) come from core's config. The import runs synchronously inside the request.
 
@@ -143,7 +145,7 @@ php artisan vendor:publish --tag=tbtop-spatie-media-library-config
 | `conversion.format` | `'webp'` | Re-encode format: `webp`, `jpeg` or `png`; `null` keeps the original |
 | `conversion.quality` | `80` | Encoder quality |
 | `accept` | `['image/*']` | Allowed MIME types, as fnmatch patterns |
-| `url_import.enabled` | `true` | Whether URL import is accepted; when `false`, imports return a 422 |
+| `url_import.enabled` | `true` | Whether URL import is accepted. When `false` the input still shows in the dialog, and an import returns a 422 'URL import is disabled.' |
 
 These settings are global. The field has no per-field override for format, accepted types or limits.
 
@@ -156,6 +158,9 @@ What v0.1.2 does not do:
 - **No shared library.** Only the bound record's collection is listed. For files reused across records, use the core [`media` field](/docs/authoring/fields#files-and-media).
 - **No cropping, alt text or custom properties.** Edit those through spatie's API in your own code.
 - **No drag sorting.** The order is the order of picking. Spatie's `Media::setNewOrder()` can persist an order you compute.
-- **Listing is capped at `per_page`, without pagination.** Search narrows by name. The tiles of picked images are resolved from the same unfiltered list, so a picked file beyond the first `per_page` of the collection does not show in the form. Keep `per_page` above your largest collection.
+- **Listing is capped at `per_page`, without pagination.** Search narrows by name. The tiles of picked images are resolved from the same capped list. A picked file beyond the first `per_page` of the collection does not show, and while one is hidden, × and replace act on the wrong position: they can drop or overwrite a different image than the one clicked. A file uploaded into a collection that already holds `per_page` items does not appear in the dialog. Keep `per_page` above the largest collection the field will ever see.
+- **Collection rules apply at upload time.** On a `singleFile()` or `onlyKeepLatest()` collection, an upload deletes the older files at once, before the form is saved.
+- **Page middleware does not guard uploads.** The upload route runs under the panel's default stack, not a page's `middleware()` override. Put access checks the upload must respect in the page's `can()` gate.
+- **A refused SVG leaves a media row behind.** The row points at a deleted file and lists as a broken tile until your submit handler removes it.
 - **The browser file dialog offers images only.** Widening `accept` affects URL import and server checks; the Upload button's dialog still filters to `image/*`.
 - **English-only interface.** The dialog's labels and messages are not translated.
