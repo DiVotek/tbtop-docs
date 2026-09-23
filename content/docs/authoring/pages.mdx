@@ -39,7 +39,7 @@ class ReportsPage extends Page
 php artisan make:tbtop-page Reports
 ```
 
-The command creates `app/Admin/Pages/ReportsPage.php` (it appends the `Page` suffix) with a `nav()` entry in the `Main` group. `--path=` overrides the URI, `--group=` sets the nav group, `--no-nav` leaves `nav()` out and `--force` overwrites an existing file. It then reports whether a panel discovers that directory or whether you must add the class to `pages()` yourself. Registration and discovery are covered in [Panel](/docs/getting-started/panel).
+The command creates `app/Admin/Pages/ReportsPage.php` (it appends the `Page` suffix) with a `nav()` entry in the `Main` group. `--path=` overrides the URI, `--group=` sets the nav group, `--no-nav` writes a `nav()` that returns `null` and `--force` overwrites an existing file. It then reports whether a panel discovers that directory or whether you must add the class to `pages()` yourself. Registration and discovery are covered in [Register a panel](/docs/getting-started/panel#pages-explicit-or-discovered).
 
 ## How a page runs
 

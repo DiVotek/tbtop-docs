@@ -326,6 +326,9 @@ import { Truck } from "lucide-react";
 registerIcon("shipping", Truck); // alias: ->icon('shipping') now draws a truck
 ```
 
+Importing from `lucide-react` in your own code means adding it to the host's `package.json`;
+the client package depends on it but does not re-export it.
+
 A component of your own works too; `registerIcon()` takes it typed as `LucideIcon`.
 
 ## Gotchas

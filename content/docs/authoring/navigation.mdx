@@ -137,16 +137,7 @@ $panel->navigation('topbar');
 
 ## Icons
 
-Icon names are Lucide names in kebab case: `file-text`, `shopping-cart`, `circle-check`. Every Lucide icon is available without registration. To add a name of your own — an alias, or an icon component with the Lucide component type — register it in the admin client entry and then refer to that name from PHP:
-
-```ts
-import { registerIcon } from "@tbtop/inertia-admin";
-import { Rocket } from "lucide-react";
-
-registerIcon("launch", Rocket);
-```
-
-Importing from `lucide-react` in your own code means adding it to the host's `package.json`; the client package depends on it but does not re-export it.
+Icon names are Lucide names in kebab case: `file-text`, `shopping-cart`, `circle-check`. Every Lucide icon is available without registration. To add a name of your own, such as an alias or your own icon component, register it in the admin client entry with `registerIcon()`; see [Client components](/docs/extending/client-components#icons).
 
 The same names work for nav items, groups, palette commands, actions and table cells.
 

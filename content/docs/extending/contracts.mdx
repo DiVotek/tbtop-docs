@@ -38,12 +38,8 @@ agree with each other.
 
 `tbtop/admin` (Composer) and `@tbtop/inertia-admin` (npm) are released together from one
 tag and always carry the same version number. Install the same version of both, and
-upgrade them together:
-
-```bash
-composer require tbtop/admin:0.5.1
-npm install @tbtop/inertia-admin@0.5.1
-```
+upgrade them together. [Install](/docs/getting-started/install#install-the-packages) shows
+how to pin them.
 
 A PHP package from one release with a client from another can disagree about option
 names or node shapes, and the symptoms show up only in the browser.
@@ -155,18 +151,9 @@ consequences:
 ## Effects are a closed set
 
 When an action or a form submit finishes, the server answers with a list of effects for
-the client to run. There are exactly eight:
-
-| Effect | What it does |
-|---|---|
-| `notify` | Show a toast (`message`, optional `level`) |
-| `redirect` | Go to `href` |
-| `refreshTable` | Reload the named table, or the nearest one |
-| `resetForm` | Reset the nearest form to its baseline values |
-| `closeModal` | Close the open modal |
-| `haltModal` | Keep the modal open and show a message |
-| `copyToClipboard` | Copy `text` |
-| `setFormData` | Set top-level field values in the nearest form from `data` |
+the client to run. There are exactly eight: `notify`, `redirect`, `refreshTable`,
+`resetForm`, `setFormData`, `closeModal`, `haltModal` and `copyToClipboard`. What each one
+does on the client is listed in [Actions](/docs/authoring/actions#effects).
 
 You build them with `Effects::make()` in PHP (see
 [Effects](/docs/api/actions#effects) in the API reference). You cannot add a new effect from

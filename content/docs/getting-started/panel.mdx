@@ -48,7 +48,7 @@ return [
 `app/Admin/Pages` must exist before this boots. A discovery directory that does not exist throws. Once a page is in it, the panel answers under `/admin`. [Your first page](/docs/getting-started/first-page) walks through creating one.
 
 <Callout type="warn" title="Discovery alone picks the landing page alphabetically">
-  `/admin` redirects to the first registered page with a static path. With discovery only, that is the alphabetically first class name, which is rarely the page you want. A `LoginPage` sorts ahead of `PostsPage`, so signed-in users would land on the sign-in form. Once you have a landing page, list it first in `pages()` next to `discoverPages()`. See [Identity and routing](#identity-and-routing).
+  `/admin` redirects to the first registered page with a static path, and with discovery alone that is the alphabetically first class name. A `LoginPage` sorts ahead of `PostsPage`, so signed-in users would land on the sign-in form. See [Identity and routing](#identity-and-routing) and [Make it the landing page](/docs/getting-started/first-page#make-it-the-landing-page).
 </Callout>
 
 ## Identity and routing

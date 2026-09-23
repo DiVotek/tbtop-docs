@@ -16,10 +16,10 @@ Deploying a Tabletop panel is a normal Laravel deploy with a few additions. The 
 
 ```jsonc
 // composer.json
-"tbtop/admin": "^0.5.1"
+"tbtop/admin": "0.5.1"
 ```
 
-Commit `composer.lock` and `package-lock.json`, and install from them on the server (`composer install`, `npm ci`). When you upgrade, bump both in the same commit.
+With `^0.5.1` instead, a later `composer update` can move PHP to a newer 0.5.x patch while npm stays on 0.5.1. [Install](/docs/getting-started/install#install-the-packages) covers both options. Commit `composer.lock` and `package-lock.json`, and install from them on the server (`composer install`, `npm ci`). When you upgrade, bump both in the same commit.
 
 ## Build the assets
 

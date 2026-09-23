@@ -77,15 +77,13 @@ $s->grid(['cols' => 2], [
 
 **Labels and hints.** `label()` defaults to the humanized field name. `helperText()` puts a muted line under the input; `tooltip()` adds an info icon next to the label. `text`, `textarea`, `number` and `richtext` also take `placeholder()`.
 
-**Validation.** Validation always runs in PHP. `required()` marks the field and adds the `required` rule; `rules()` appends any Laravel rules as a pipe string or an array. The fluent helpers — `nullable()`, `minLength()`, `maxLength()`, `minValue()`, `maxValue()`, `between()`, `integer()`, `unique()`, `exists()` and others — append the same rule `rules()` would. A field only offers the helpers that fit its kind, so a `boolean` has no `maxLength()`. Two rules to remember: pass a `regex:` rule as an array element (or use `->regex()`), and call `ignore()` after `unique()`, since it rewrites the last `unique` rule and throws otherwise.
+**Validation.** `required()` marks the field and adds the `required` rule; `rules()` appends any Laravel rules. The fluent helpers — `nullable()`, `minLength()`, `maxLength()`, `minValue()`, `maxValue()`, `between()`, `integer()`, `unique()`, `exists()` and others — append the same rule `rules()` would. A field only offers the helpers that fit its kind, so a `boolean` has no `maxLength()`. `->regex()` is the safe way to add a pattern, and `ignore()` must follow `unique()`, since it rewrites the last `unique` rule and throws otherwise. How the rules run, and the ones that catch people out, are on [Forms](/docs/authoring/forms#validation).
 
 **Defaults.** `default()` fills the value only when the form's `record()` has no key for the field. An explicit key in `record()` always wins, even a `null`.
 
-**Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser against the form's current values. A hidden field still ships and still submits its value. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Use `when()` for anything the user must not reach, and `hiddenIf()` for layout.
+**Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields).
 
 **Layout.** Inside a `grid` or a `section` with `columns`, `columnSpan()` and `columnStart()` take an int from 1 to 8 or a breakpoint array such as `['md' => 2]`.
-
-Conditions, validation messages and layout blocks are covered in more depth on [Forms](/docs/authoring/forms).
 
 ## Options
 
@@ -267,7 +265,7 @@ A `slug` that is not itself translatable cannot derive from a translatable sourc
 ## Gotchas
 
 - **Nothing is saved for you.** `upload` stores the file, but writing the path, key or id to your model is your submit handler's job. The same holds for pivot tables, media ids and translations.
-- **Hidden is not absent.** A field hidden with `hiddenIf()` still submits its value, and its rules still run. Use `when()`, or `requiredIf()` in place of `required()`, for fields that only matter in some states.
+- **Hidden is not absent.** Use `when()`, or `requiredIf()` in place of `required()`, for fields that only matter in some states. See [What hiding does not do](/docs/authoring/forms#what-hiding-does-not-do).
 - **Repeater bounds are client-side.** `minItems()` and `maxItems()` only disable the add and remove buttons. Enforce the count with `rules('array|max:10')`.
 - **No money input.** For an amount stored in cents, use `number()->step('0.01')->prefix('$')` and convert in the submit handler. Only table columns and display values understand cents.
 - **Pass builders, not nodes.** Put the field builder itself in a form's children. A field already turned into a node with `->toNode()` throws, because its rules can no longer be collected.
