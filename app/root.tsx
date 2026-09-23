@@ -10,6 +10,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import SearchDialog from "@/components/search";
+import { umami } from "@/lib/shared";
 import NotFound from "./routes/not-found";
 
 export const links: Route.LinksFunction = () => [
@@ -34,6 +35,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
 				<Meta />
 				<Links />
+				<script
+					defer
+					src={umami.src}
+					data-website-id={umami.websiteId}
+					data-domains={umami.domains}
+				/>
 			</head>
 			<body className="flex flex-col min-h-screen">
 				<RootProvider search={{ SearchDialog }}>{children}</RootProvider>
