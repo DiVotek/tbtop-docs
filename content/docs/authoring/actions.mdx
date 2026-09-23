@@ -1,5 +1,389 @@
 ---
 title: "Actions"
+description: "Buttons that navigate, submit or run a server closure — as page, row and bulk actions, with confirmations, modals, slide-overs and the effects they send back."
 ---
 
-This page is being written.
+An action is a button declared in PHP with `$s->action('name')`. It does one of five
+things, called its **spec**: `visit()` a URL, `submit()` a form, run a server closure
+with `handle()`, open a `modal()`, or call a client handler with `custom()`. Every
+action has exactly one spec; setting a second throws a `LogicException`.
+
+The name is the action's address. When the button fires, the client posts to the page's
+action endpoint with that name, the server rebuilds the page, finds the action by name
+and runs its closure. Build every action through `$s->action()`. A bare `ActionBuilder`
+is never registered, so its endpoint answers 404.
+
+## Where actions go
+
+| Slot | How |
+|---|---|
+| Page header, right of the title | `Page::headerActions(S $s): array` |
+| Anywhere in the page tree | `$s->actionsRow([...])` |
+| Above a table | `$s->table('orders')->headerActions([...])` |
+| Per row | `->rowActions([...])` |
+| On checked rows | `->bulkActions([...])` |
+| Inside a form or modal | an `actionsRow` as a child of the form |
+
+## Server actions
+
+`handle()` takes a closure and a `needs` list. `needs` decides what the client collects
+and sends: `'form'` (the enclosing form's values), `'row'` (the table row) or
+`'selection'` (the keys of checked rows). The closure receives an `ActionCtx`:
+
+| Property | Contents |
+|---|---|
+| `$ctx->user` | the authenticated user |
+| `$ctx->request` | the Laravel request |
+| `$ctx->form` | form values, validated against the form's rules when `needs` has `'form'` |
+| `$ctx->row` | the row payload when `needs` has `'row'` |
+| `$ctx->selection` | a list of row keys when `needs` has `'selection'` |
+| `$ctx->params` | route parameters; server route values override anything the client sends, but treat extra keys as client input |
+
+The closure returns an `Effects` instance: a list of instructions for the client.
+
+```php
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+
+$s->action('archive')
+    ->label('Archive')
+    ->handle(function (ActionCtx $ctx): Effects {
+        $order = Order::query()->whereKey($ctx->row['id'] ?? null)->firstOrFail();
+        $order->update(['archived_at' => now()]);
+
+        return Effects::make()->notify('Order archived')->refreshTable();
+    }, needs: ['row']);
+```
+
+`$ctx->row` and `$ctx->selection` come from the browser. Treat them as ids to look up,
+never as trusted record data. Load the model again and check its state in the handler.
+
+## Row and bulk actions
+
+Row actions receive the row they were clicked on. A plain link needs no server trip:
+`visit()` fills `{row.<column>}` placeholders from the row, URL-encoded.
+
+```php
+$s->table('orders')
+    ->rowActions([
+        $s->action('open')->label('Open')->visit('/admin/orders/{row.id}'),
+        $s->action('ship')->label('Mark shipped')
+            ->hiddenIf('status', '!=', 'paid')
+            ->handle(fn (ActionCtx $ctx): Effects => Effects::make()->notify('Shipped')->refreshTable(), needs: ['row']),
+        DeleteAction::make($s, using: function (ActionCtx $ctx): void {
+            Order::query()->whereKey($ctx->row['id'] ?? null)->delete();
+        }),
+    ])
+    ->bulkActions([
+        $s->action('markPaid')->label('Mark paid')->handle(function (ActionCtx $ctx): Effects {
+            $count = Order::query()->whereKey($ctx->selection)->update(['status' => 'paid']);
+
+            return Effects::make()->notify("{$count} orders marked paid")->refreshTable();
+        }, needs: ['selection']),
+    ]);
+```
+
+On a row action, `hiddenIf()` resolves against the row's values instead of a form's.
+Bulk selection covers the current page of rows only. See [Tables](/docs/authoring/tables)
+for the table these slots belong to.
+
+## Confirmation
+
+`confirm($title, $description = null)` puts a dialog in front of an action. It is not a
+spec, so it sits next to `handle()`, `submit()` or `custom()` on the same builder.
+
+```php
+$s->action('cancelOrder')->label('Cancel order')->color('danger')
+    ->confirm('Cancel this order?', 'The customer is emailed and stock is released.')
+    ->handle(fn (ActionCtx $ctx): Effects => Effects::make()->notify('Order cancelled')->refreshTable(), needs: ['row']);
+```
+
+The dialog shows the title, the description and one button. That button carries the
+action's own label and colour. Without a label it reads "Confirm", and without a colour it
+is `danger`. The builder has no separate confirm or cancel label and no variant setting: to
+change the button, change the action's `label()` and `color()`. There is no Cancel
+button. The user backs out with the × in the corner, Escape or a click outside. The
+dialog closes after the handler runs, unless the response carries `haltModal()`, in which
+case it stays open and shows the message.
+
+The client applies `confirm()` only to `handle()`, `submit()` and `custom()`. On a
+`visit()` or `modal()` action it is dropped without an error, and the action runs
+straight away. To confirm before navigating, use `handle()` and return `redirect()`. For
+a modal, put the warning in the modal's description.
+
+## Modals
+
+`modal($title, $body = null, $description = null)` is the spec for an action that opens
+a dialog. The title and description form the header, and the body is any node, usually
+a form. With no body, the dialog shows only its header, which is enough for a short
+notice.
+
+The modal has no footer and no submit or cancel options. Its buttons are an `actionsRow`
+placed as the form's last child, and each button is an action of its own, so its label,
+colour and handler are set the usual way. The row sits inside the scrolling body, after
+the fields. The inner action reads `$ctx->row`, which is filled only when the modal was
+opened from a table row, so this one is a row action:
+
+```php
+$s->table('orders')->rowActions([
+    $s->action('refund')
+        ->label('Refund')
+        ->modal('Issue refund', $s->form('refund', [
+            $s->number('amount')->label('Amount')->required()->rules('numeric|min:0.01'),
+            $s->textarea('reason')->label('Reason')->required(),
+            $s->actionsRow([
+                $s->action('refundCancel')->label('Cancel')->outlined()
+                    ->handle(fn (): Effects => Effects::make()->closeModal()),
+                $s->action('refundSubmit')->label('Refund')->color('danger')->handle(
+                    function (ActionCtx $ctx): Effects {
+                        $order = Order::query()->whereKey($ctx->row['id'] ?? null)->firstOrFail();
+
+                        try {
+                            app(Refunds::class)->issue($order, $ctx->form['amount'], $ctx->form['reason']);
+                        } catch (RefundRejected $e) {
+                            return Effects::make()->haltModal($e->getMessage());
+                        }
+
+                        return Effects::make()->notify('Refund issued')->closeModal()->refreshTable();
+                    },
+                    needs: ['row', 'form'],
+                ),
+            ]),
+        ])->record(['amount' => null, 'reason' => '']), description: 'The amount goes back to the original payment method.')
+        ->modalWidth('lg'),
+]);
+```
+
+A Cancel button is a `handle()` that returns `closeModal()`. That costs one request; the
+modal presets build their Cancel and Close buttons the same way.
+
+The inner action's rules run before the closure. A failing rule answers 422 and the
+messages appear under the fields. For errors only the domain can detect, return
+`haltModal($message)`: it shows the message inside the open dialog and keeps what the
+user typed. `notify()` followed by `closeModal()` would throw the input away.
+
+### Dialog or slide-over
+
+A modal action has two presentations:
+
+| Presentation | How | From 640px wide | Below 640px |
+|---|---|---|---|
+| Dialog (default) | nothing to set | centred dialog | sheet from the bottom, up to 65% of the screen height |
+| Slide-over | `->slideOver()` | full-height panel on the right | full-height panel on the right, full width |
+
+```php
+$s->action('newOrder')
+    ->label('New order')
+    ->modal('New order', $s->form('newOrder', [/* fields and actionsRow */]))
+    ->slideOver()
+    ->modalWidth('xl');
+```
+
+A slide-over suits a long form, which then scrolls in a full-height panel beside the
+table. `slideOver(false)` switches it back off.
+
+### Width
+
+`modalWidth()` caps the panel's width from 640px up. Below that, a dialog becomes a
+bottom sheet and a slide-over takes the full width, whatever the setting. It applies to
+both presentations. The default is `md`.
+
+| Value | Maximum width |
+|---|---|
+| `sm` | 28rem |
+| `md` (default) | 32rem |
+| `lg` | 42rem |
+| `xl` | 36rem |
+| `2xl` | 42rem |
+| `3xl` | 48rem |
+| `4xl` | 56rem |
+| `5xl` | 64rem |
+| `6xl` | 72rem |
+| `7xl` | 80rem |
+| `full` | 56rem |
+
+The first four names are older than the rest, and two results follow from that: `lg` is
+wider than `xl`, and `full` stops at 56rem instead of filling the screen. For the widest
+panel, use `7xl`. Any other value throws an `InvalidArgumentException` when you call
+`modalWidth()`.
+
+### Loading data when the modal opens
+
+`query(fn (ActionCtx $ctx): array => ..., needs: ['row'])` runs on the server each time
+the modal opens. `needs` takes `row`, `selection` and `form` and defaults to `['row']`.
+The body shows a loading skeleton until the data arrives, and an error in its place if
+the request fails. The array `query()` returns becomes the starting values of the form
+in the body. It replaces that form's `record()`, which is not used inside a modal that
+has `query()`.
+
+`$ctx->row` is filled only when the action is opened from a table row, so this one is a
+row action:
+
+```php
+$s->table('tickets')->rowActions([
+    $s->action('reassign')
+        ->label('Reassign')
+        ->modal('Reassign ticket', $s->form('reassign', [
+            $s->select('assignee_id')->label('Assignee')->options($agents),
+            $s->actionsRow([/* save action with needs: ['row', 'form'] */]),
+        ]))
+        ->query(fn (ActionCtx $ctx): array => [
+            'assignee_id' => Ticket::query()->whereKey($ctx->row['id'] ?? null)->value('assignee_id'),
+        ], needs: ['row']),
+]);
+```
+
+`modalWidth()`, `slideOver()` and `query()` belong to the modal spec. On any other spec
+they throw a `LogicException` when the page is rendered.
+
+### Closing
+
+A modal closes when the user clicks the × in the corner, presses Escape or clicks
+outside it. None of the three can be turned off from PHP. From the server, the
+`closeModal()` effect closes the modal that the action ran in. When the effects come from
+a form's own `onSubmit()` handler, which the client receives after the page reloads,
+`closeModal()` closes the most recently opened modal.
+
+The body exists only while the modal is open. Closing throws away what the user typed,
+and opening again starts the form from its `record()`, or from a fresh `query()` result
+when the modal has one. A message
+left by `haltModal()` is cleared on the next open. `haltModal()` takes a kind as its
+second argument (`error` by default, or `warning`, `info` or `success`) that sets the
+colour of the banner.
+
+A modal body can contain another modal action. That opens a second modal on top, and a
+`closeModal()` from inside it closes only the inner one.
+
+### Presets
+
+Most modals are one of three shapes, which ship as presets in `Tbtop\Admin\Dsl\Actions`:
+
+- `EditAction::make($s, form:, loadUsing:, saveUsing:)` builds a modal that `loadUsing`
+  prefills, with Save and Cancel buttons.
+- `CreateAction::make($s, form:, storeUsing:, defaultRecord:)` builds the same modal
+  without the load step.
+- `ViewAction::make($s, loadUsing:, render:)` builds a read-only modal with a Close button.
+
+Other presets cover one-click row operations and form buttons:
+
+- `DeleteAction::make($s, using:, bulk: false)` sets the danger colour and adds a
+  confirmation.
+- `ReplicateAction::make($s, using:)` wraps a row closure. `RestoreAction::make($s, Order::class)`
+  and `ForceDeleteAction::make($s, Order::class)`, plus their `::bulk()` variants, take a
+  `SoftDeletes` model class and do the work themselves; `softDeletes()` on a table wires all four.
+- `FormActions::save($s)` and `FormActions::saveCancel($s, $cancelUrl)` build the
+  Save/Cancel row of a full-page form.
+
+A preset closure can return nothing, and the preset then sends its default effects: a
+toast, closing the modal where there is one, and refreshing the table. Return an
+`Effects` instance to replace those defaults. Bulk `DeleteAction` skips your closure and
+shows a warning when nothing is selected. Every preset returns the `ActionBuilder`, so
+`->label()` and `->hiddenIf()` still chain. The modal settings chain only onto the modal
+presets; see the next section.
+
+### Modal settings on presets
+
+`EditAction`, `CreateAction` and `ViewAction` take the modal title as `title:`. They
+return the `ActionBuilder` with the modal already set, so `->slideOver()`,
+`->modalWidth()`, `->label()` and `->hiddenIf()` chain onto them. A description cannot
+be added to a preset, because it goes through `modal()` and a second `modal()` call
+throws. Build the modal by hand when you need one.
+
+```php
+EditAction::make($s, form: $orderForm, loadUsing: $load, saveUsing: $save, title: 'Edit order')
+    ->slideOver()
+    ->modalWidth('2xl');
+```
+
+`DeleteAction`, `ReplicateAction`, `RestoreAction` and `ForceDeleteAction` are server
+actions, so `slideOver()` and `modalWidth()` on them throw when the page is rendered.
+
+To open a row's modal by clicking the row itself, point the table's `rowClick()` at the
+action's name. See [Tables](/docs/authoring/tables).
+
+The full method list is in [Actions](/docs/api/actions).
+
+## Effects
+
+`Effects` is a closed set. The client runs the effects in the order you add them.
+
+| Method | What the client does |
+|---|---|
+| `notify($message, $kind = 'success')` | shows a toast |
+| `redirect($href)` | makes an Inertia visit, client-side |
+| `refreshTable(?$name)` | refetches the named table; without a name, the enclosing table, else every table on the page, else it reloads the page |
+| `resetForm()` | resets the nearest enclosing form |
+| `setFormData($data)` | overwrites the given keys in the nearest form and leaves it dirty |
+| `closeModal()` | closes the modal the action ran in |
+| `haltModal($message, $kind = 'error')` | shows the message inside the open modal |
+| `copyToClipboard($text)` | copies the text and shows a toast |
+
+`notify()` has special styling only for the `error` and `warning` kinds. Any other value
+renders as success, including `danger`, which is a button colour. A closure that returns
+anything other than `Effects` sends no effects at all. That includes a string, so use
+`redirect()` for navigation. `resetForm()` undoes an earlier `setFormData()`, so add
+`setFormData()` last.
+
+## Notifications after an action
+
+A toast is for the person who clicked. To tell someone else, or to leave a record that
+outlives the page, send a database notification from the handler and still return a toast:
+
+```php
+use Tbtop\Admin\Notifications\Notification;
+use Tbtop\Admin\Notifications\NotificationAction;
+
+Notification::make()
+    ->title("Ticket #{$ticket->id} assigned to you")
+    ->info()
+    ->actions([NotificationAction::make('Open')->url("/admin/tickets/{$ticket->id}")])
+    ->sendToDatabase($ticket->assignee);
+
+return Effects::make()->notify('Reassigned')->closeModal()->refreshTable();
+```
+
+This needs Laravel's `notifications` table (`php artisan make:notifications-table`) and the
+`Notifiable` trait on the recipient model; see [the shell](/docs/getting-started/panel#header-sidebar-and-footer).
+The notification shows up in the header bell. The stock chrome header contains only the
+user menu, so add `$s->notifications()` to your chrome's `headerItems()`. Notification
+actions are links only; closures cannot be stored in the database. See
+[Notifications](/docs/api/notifications).
+
+## Authorization
+
+`authorize($ability, $argument)` runs `Gate::allows()` when the page is built. If the
+check fails, the action is left out of the page, and a hand-crafted POST to it gets a 404.
+The argument is fixed when the page is built, so use it for class-level abilities such as
+`authorize('create', Order::class)`. Check per-row permission in the handler, after you
+load the record. `when(false)` also removes an action, with the same 404.
+
+## Less common options
+
+- `withoutValidation()` on a `handle()` with `'form'` in `needs` lets the action run while
+  the form is invalid. Only declared keys reach the closure.
+- `custom('handlerName', $params)` calls a client function registered with
+  `defineCustomAction`. See [Client components](/docs/extending/client-components).
+- `keybinding('mod+s')`, `badge()`, `color()`, `size()`, `outlined()` and `link()`
+  change how the trigger looks and behaves.
+
+## Gotchas
+
+- `modal()` and `handle()` on the same builder are two specs and throw. The server work
+  belongs to an inner action inside the modal body.
+- `confirm()` on a `visit()` or `modal()` action is dropped without an error, and the
+  action runs with no dialog.
+- `hiddenIf()` only hides the button in the browser. The endpoint still accepts the call,
+  so the handler must re-check the record's state.
+- Action names must be unique on a page. A second action with the same name replaces the first in the registry. This includes the inner actions that presets add:
+  `{name}Save`, `{name}Cancel`, `{name}Store` and `{name}Close`, plus the fixed names `save` and
+  `cancel` from `FormActions`, and `restore`, `forceDelete`, `restoreSelected` and
+  `forceDeleteSelected` from the soft-delete presets.
+- The table clears its selection whenever its rows reload: after `refreshTable()`, a page change, a new sort or a filter.
+- `notify('...', 'danger')` shows a green toast. Use `'error'`.
+
+For the full builder and every `Effects` method, see [Actions](/docs/api/actions). Forms
+that submit into their own `onSubmit` are covered in [Forms](/docs/authoring/forms).
+Content that updates without a page reload is covered in
+[Live regions](/docs/extending/live-regions).
+
+See it in the demo: the [posts table](https://demo.tbtop.dev/admin/posts) has a header create action in a slide-over, a server-side edit redirect, the View, Edit, Replicate and Delete presets on each row, and a bulk delete. The [media list](https://demo.tbtop.dev/admin/media) uses a `{row.id}` visit template for its row links.

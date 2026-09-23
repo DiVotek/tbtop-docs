@@ -1,0 +1,331 @@
+---
+title: "Customize the panel"
+description: "Change the admin's colours, fonts, dark mode, layout, header, sidebar, logo and interface text, and know which host file each change lives in."
+---
+
+The [panel class](/docs/getting-started/panel) decides what the admin is: its URL prefix, guard, pages and the shell settings around them. How the admin looks is split across a few files that `admin:install` published into your app. You own all of them. Nothing on this page needs a fork of either package.
+
+| You want to change | Where | File |
+|---|---|---|
+| Colours, radius, fonts | CSS variables and the Tailwind theme | `resources/css/admin.css` |
+| Web fonts, first-paint theme, `<head>` | The Blade root view | `resources/views/admin.blade.php` |
+| Custom blocks, fields, icons, badge colours, tab title | Client registrations in the admin entry | `resources/js/admin.tsx` |
+| Navigation layout, content width, density, dark mode policy, brand | `PanelConfig` methods | your `Panel` class |
+| Header, sidebar, footer, logo | A `Chrome` subclass | e.g. `app/Admin/AdminChrome.php` |
+| Interface text (button labels, messages) | Laravel translation overrides | `lang/vendor/tbtop-admin/{locale}/admin.php` |
+
+## How the styles are built
+
+The client package does not ship compiled CSS. `@tbtop/inertia-admin/styles.css` is a Tailwind v4 source file. Your Vite build compiles it, through the stylesheet the installer published:
+
+```css title="resources/css/admin.css"
+@import '@tbtop/inertia-admin/styles.css';
+
+@source '../../app/**/*.php';
+```
+
+`admin.tsx` imports this file, and `admin.blade.php` loads `admin.tsx`. This has two consequences:
+
+- Everything you add to `admin.css` after the `@import` line is compiled together with the package's styles. Token overrides, `@theme` changes and your own rules all go there.
+- Tailwind only generates classes it finds in scanned files. The `@source` line covers classes you write in PHP, such as a section's `class` option. If you write admin classes somewhere else, add one `@source` line per directory. See [Deploy](/docs/getting-started/deploy) for the build-time side of this.
+
+The main app's `resources/css/app.css` and its Tailwind config do not reach the panel. The panel is its own Vite entry with its own stylesheet.
+
+## Colours
+
+The admin is drawn with shadcn-style design tokens: CSS variables such as `--primary` and `--border`, mapped to Tailwind colours (`bg-primary`, `border-border`). The package defines a light set on `:root` and a dark set on `.dark`. To re-theme, redefine the variables below the `@import`. Your rules come later in the compiled file, so they win.
+
+```css title="resources/css/admin.css"
+@import '@tbtop/inertia-admin/styles.css';
+
+@source '../../app/**/*.php';
+
+:root {
+	--primary: oklch(0.546 0.245 262.881);
+	--primary-foreground: oklch(0.985 0 0);
+	--ring: oklch(0.623 0.214 259.815);
+}
+
+.dark {
+	--primary: oklch(0.707 0.165 254.624);
+	--primary-foreground: oklch(0.205 0 0);
+	--ring: oklch(0.546 0.245 262.881);
+}
+```
+
+Override only the tokens you change. The rest keep the package values. A palette from a shadcn theme generator works the same way: paste its `:root` and `.dark` value blocks and leave out its `@import` and `@theme inline` lines, which the package already has.
+
+The tokens the package defines at v0.5.1:
+
+| Token | Used for |
+|---|---|
+| `--background`, `--foreground` | Page and shell background, body text. The sidebar is drawn with these too. |
+| `--card`, `--card-foreground` | Cards and card-variant sections |
+| `--popover`, `--popover-foreground` | Dropdowns, menus, popovers |
+| `--primary`, `--primary-foreground` | Primary buttons, links in rich text, `primary` badges |
+| `--secondary`, `--secondary-foreground` | Secondary buttons |
+| `--muted`, `--muted-foreground` | Muted surfaces, helper and placeholder text, `gray` badges |
+| `--accent`, `--accent-foreground` | Hover states and the active navigation item |
+| `--destructive`, `--destructive-foreground` | Danger buttons, validation errors, `danger` badges |
+| `--success`, `--warning`, `--info` and their `-foreground` pairs | Status badges and icons in tables, trends on stat cards. Alerts (`displayAlert`) use fixed Tailwind colours, not these tokens. |
+| `--border`, `--input`, `--ring` | Borders, input borders, focus rings |
+| `--chart-1` … `--chart-5` | Chart series |
+| `--chart-success`, `--chart-warning`, `--chart-danger` | Trend lines on stat cards |
+| `--sidebar`, `--sidebar-foreground`, `--sidebar-primary`, `--sidebar-accent`, `--sidebar-border`, `--sidebar-ring` and their pairs | Defined for shadcn compatibility. The stock shell does not use them at v0.5.1. |
+
+<Callout type="info" title="The sidebar follows --background">
+  Changing `--sidebar` has no visible effect at v0.5.1: the stock sidebar uses `--background` and `--border`, and the active item uses `--accent`. The sidebar's frame is not part of the chrome tree, and at v0.5.1 no token or panel setting tints it separately: the frame takes `--background`.
+</Callout>
+
+### Radius
+
+`--radius` (default `0.5rem`) is the base step. Tailwind's `rounded-xs` through `rounded-xl` are derived from it, so one variable rounds every control:
+
+```css title="resources/css/admin.css"
+:root {
+	--radius: 0.75rem;
+}
+```
+
+The package defines `--radius` on `:root` only, so the dark theme uses the same value.
+
+### Badge and icon colours in tables
+
+Table badges and icon columns take a colour name: `gray`, `primary`, `success`, `warning`, `danger`, `info` (also available as the `Color` enum). A name those do not cover can be registered in the client. Pass Tailwind classes for the badge background, the text on it, and optionally the colour of a bare icon:
+
+```tsx title="resources/js/admin.tsx"
+import { registerTableColor } from "@tbtop/inertia-admin";
+
+registerTableColor("violet", { bg: "bg-violet-600", text: "text-white", icon: "text-violet-600" });
+```
+
+```php
+Column::make('tier')->badge(['vip' => 'violet', 'standard' => 'gray']),
+```
+
+Write the class names out in full, as above. Tailwind finds classes by scanning source text, so a class built from a string at runtime is not generated. An unknown colour name falls back to the `gray` styling.
+
+## Fonts
+
+The stock `admin.blade.php` puts Tailwind's `font-sans` class on `<body>`, so the admin font is Tailwind's `--font-sans` theme variable. Load the font in the root view and set the variable in `admin.css`:
+
+```blade title="resources/views/admin.blade.php"
+<head>
+    {{-- ... --}}
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=inter:400,500,600" rel="stylesheet" />
+    {{-- ... --}}
+</head>
+```
+
+```css title="resources/css/admin.css"
+@theme {
+	--font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+```
+
+`--font-mono` works the same way for monospace text. A self-hosted font works too: declare it with `@font-face` in `admin.css` and name it in `--font-sans`.
+
+## Dark mode
+
+Dark mode is class-based: the `.dark` class on `<html>` switches every token to its dark value. The chosen theme is stored in a `tbtop_theme` cookie with the value `light`, `dark` or `system`. Two panel settings control it:
+
+```php
+$panel
+    ->darkMode(true)              // false: force light and hide the theme toggle
+    ->defaultThemeMode('system'); // 'light' | 'dark' | 'system', used when there is no cookie yet
+```
+
+- **The toggle.** The stock header has no theme switch. Add `$s->themeToggle()` to the header through your chrome ([below](#header-sidebar-and-footer)). One click cycles light, dark, system.
+- **The first paint.** `admin.blade.php` has an inline script that reads the cookie and sets `.dark` before React loads, so the page does not flash. It falls back to `system`. If you set `defaultThemeMode('dark')` or `('light')`, change the fallback in that script to match:
+
+  ```blade title="resources/views/admin.blade.php"
+  var theme = match ? match[1] : 'dark';
+  ```
+
+- **Light only.** `darkMode(false)` removes `.dark` once the app mounts and hides the toggle. The Blade view still applies a saved dark cookie before that, so remove the inline script and the `class` expression on `<html>` as well, or users who chose dark earlier see one dark frame on every full page load.
+
+## Layout and density
+
+These `PanelConfig` settings rearrange the shell. They are covered in [Register a panel](/docs/getting-started/panel#the-shell); in short:
+
+```php
+$panel
+    ->navigation('topbar')     // 'sidebar' (default) | 'topbar' | 'topbar-sidebar'
+    ->maxContentWidth('7xl')   // sm … 7xl, full, prose; page content is capped at 5xl otherwise
+    ->density('compact');      // 'default' | 'compact': smaller controls, tighter spacing, narrower sidebar
+```
+
+- `sidebar` puts the logo and the navigation in a left sidebar and the header items in a top strip.
+- `topbar` puts the logo and the navigation in one horizontal bar. Navigation groups become dropdowns.
+- `topbar-sidebar` is a full-width top bar with a sidebar beneath it. The bar shows the brand text and a button that collapses the sidebar to an icon rail.
+
+All three collapse to a drawer on small screens. The chrome you author is the same in every layout; only its arrangement changes.
+
+A single page can leave the shell entirely: `layout()` returning `'center'` renders it without sidebar and header, centred on the screen. Sign-in pages use this. See [Pages](/docs/authoring/pages#page-hooks) and [Authentication](/docs/getting-started/authentication).
+
+## Header, sidebar and footer
+
+The shell has three areas, and each one is a tree of ordinary DSL nodes. The default `Tbtop\Admin\Panels\Chrome` class builds them:
+
+| Area | Stock content | Override |
+|---|---|---|
+| Header | the user menu | `headerItems()` to add items, `header()` to replace the area |
+| Sidebar | the logo, then the navigation menu | `sidebarItems()` to add items, `sidebar()` to replace the area |
+| Footer | nothing | `footer()` |
+
+Extend it, spread the parent's items to keep them, and point the panel at your class:
+
+```php title="app/Admin/AdminChrome.php"
+<?php
+
+namespace App\Admin;
+
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Panels\Chrome;
+
+class AdminChrome extends Chrome
+{
+    protected function headerItems(S $s): array
+    {
+        return [
+            $s->notifications(),
+            $s->action('view-site')->label('View site')->visit('/', newTab: true), // a same-origin visit() is an Inertia visit, and the admin bundle cannot render the site's pages
+            $s->themeToggle(),
+            ...parent::headerItems($s), // the user menu, kept last so it sits at the far right
+        ];
+    }
+
+    public function footer(S $s): ?Node
+    {
+        return $s->flex([
+            $s->displayText('Acme admin')->variant('muted'),
+        ], justify: 'center', class: 'py-6');
+    }
+}
+```
+
+```php
+$panel->chrome(AdminChrome::class);
+```
+
+The building blocks made for the shell, all on `$s`:
+
+| Method | Renders |
+|---|---|
+| `logo()` | The brand text, linked to the panel root |
+| `navMenu()` | The navigation built from your pages' `nav()` and the panel's `navigationItems()` |
+| `userMenu(['locales' => false])` | The profile dropdown: user, your `userMenuItems()`, language switcher, sign out. The option hides the language section. |
+| `notifications()` | The notification bell (needs the `notifications` table, see [Register a panel](/docs/getting-started/panel#header-sidebar-and-footer)) |
+| `themeToggle()` | The light / dark / system switch |
+| `localeSwitcher('dropdown')` | A standalone interface-language switcher, `'buttons'` by default. Hidden when the panel has no locales; with a single locale it still shows one button, so add it only when `->locales()` lists two or more. |
+| `spacer()` | Pushes the following items to the far edge |
+
+Any other node works too: `flex`, `stack`, `displayText`, `displayImage`, your own blocks. Actions in the chrome must be `visit()` or `custom()` actions. A server action (`->handle()`) has no page endpoint to post to, so the panel throws when it serializes the chrome.
+
+Entries in the user menu and extra navigation links are panel settings, not chrome: `userMenuItems()` and `navigationItems()`. See [Navigation](/docs/authoring/navigation).
+
+### Brand and logo
+
+`->brand('Acme')` sets the text `$s->logo()` shows. Without it, the logo shows the translated `nav.title` string, "Tabletop" in English.
+
+`logo()` renders text only. For an image logo, put your own leaf block where `logo()` was. The PHP side is a node with the image URL, the alt text and the link target:
+
+```php title="app/Admin/AdminChrome.php"
+protected function sidebarItems(S $s): array
+{
+    return [
+        new Node('app:logo', [
+            'src' => asset('images/logo.svg'),
+            'alt' => config('app.name'),
+            'href' => url('admin'),
+        ]),
+        $s->navMenu(),
+    ];
+}
+```
+
+The client side renders it. Register it in `admin.tsx` before `createInertiaApp()`:
+
+```tsx title="resources/js/admin.tsx"
+import { Link } from "@inertiajs/react";
+import { type RenderProps, registerBlock } from "@tbtop/inertia-admin";
+
+interface LogoOptions {
+	src: string;
+	alt: string;
+	href: string;
+}
+
+function Logo({ options }: RenderProps<LogoOptions>) {
+	return (
+		<Link href={options.href} className="flex items-center">
+			<img src={options.src} alt={options.alt} className="h-8 w-auto" />
+		</Link>
+	);
+}
+
+registerBlock<"app:logo", LogoOptions>({ kind: "app:logo", behavior: "leaf", render: Logo });
+```
+
+The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.5.1 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
+
+## Styling blocks from PHP
+
+Layout nodes take extra Tailwind classes: the `class` option of `stack()`, `row()`, `grid()`, `section()` and `aside()`, and the `class:` argument of `flex()`. Use the theme's colour names so the result follows your tokens and dark mode:
+
+```php
+$s->section(['title' => 'Danger zone', 'class' => 'border-destructive'], [
+    // ...
+]);
+```
+
+These classes are found by the `@source '../../app/**/*.php'` line. Classes in PHP files outside `app/` need their own `@source` line, or they compile to nothing.
+
+## Client components and icons
+
+Your own fields, display blocks, browser-side action handlers and icons are registered in `admin.tsx` and used from PHP by name. That is covered in [Client components](/docs/extending/client-components). Every Lucide icon already works by its kebab-case name. `registerIcon()` is only for aliases and icons of your own.
+
+Use your own kind names (an `app:` prefix keeps them apart from built-ins) and place them through your chrome or pages. Replacing a built-in kind by registering the same name is not a supported extension point.
+
+## Interface text
+
+The admin's own strings (button labels, table and form messages, the sign-in screen) come from the package's Laravel translation file, `tbtop-admin::admin`. The package ships English (`en`) and Ukrainian (`uk`). Override single keys with Laravel's standard vendor override:
+
+```php title="lang/vendor/tbtop-admin/en/admin.php"
+<?php
+
+return [
+    'action' => [
+        'logout' => 'Sign out',
+    ],
+    'nav' => [
+        'title' => 'Acme',
+    ],
+];
+```
+
+Laravel merges this file over the package's, so list only the keys you change. The key names are in the package's `resources/lang/en/admin.php`. The same path with another locale code (`lang/vendor/tbtop-admin/de/admin.php`) adds an interface language. Add the code to `->locales()` as well; keys the file does not define fall back to English.
+
+## Browser title and loading bar
+
+Two small settings live in the `createInertiaApp()` call of `admin.tsx`:
+
+```tsx title="resources/js/admin.tsx"
+createInertiaApp({
+	title: (title) => `${title} · Acme admin`, // the <title> of every admin page
+	progress: {
+		color: "#2563eb", // Inertia's loading bar between pages
+	},
+	// resolve and setup unchanged
+});
+```
+
+The favicon and any other `<head>` tags go in `admin.blade.php`.
+
+## Reference
+
+- Every `PanelConfig` and `Chrome` method with its signature: [API reference: Panel](/docs/api/panel).
+- The shell building blocks and layout nodes: [API reference: Builder](/docs/api/builder).
+- What `admin:install` publishes and the Vite setup: [Install](/docs/getting-started/install).

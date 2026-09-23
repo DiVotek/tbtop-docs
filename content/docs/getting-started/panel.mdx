@@ -1,5 +1,179 @@
 ---
-title: "Panel"
+title: "Register a panel"
+description: "Create the panel class that owns an admin's URL prefix, guard, middleware and pages, and register it in config/tbtop-admin.php."
 ---
 
-This page is being written.
+A **panel** is one admin instance: a URL prefix, an auth guard, a middleware stack, a set of pages and the settings for the shell around them. You write it as a PHP class that extends `Tbtop\Admin\Panels\Panel` and implements one method, `configure()`. Then you list the class in `config/tbtop-admin.php`.
+
+Most apps have one panel. Several panels are several classes, each with its own id and prefix.
+
+## A minimal panel
+
+```php
+<?php
+
+namespace App\Admin;
+
+use Tbtop\Admin\Panels\Panel;
+use Tbtop\Admin\Panels\PanelConfig;
+
+class AdminPanel extends Panel
+{
+    public function configure(PanelConfig $panel): PanelConfig
+    {
+        return $panel
+            ->id('admin')
+            ->prefix('admin')
+            ->rootView('admin')
+            ->discoverPages(
+                in: app_path('Admin/Pages'),
+                for: 'App\\Admin\\Pages',
+            );
+    }
+}
+```
+
+Register it:
+
+```php
+// config/tbtop-admin.php
+return [
+    'panels' => [
+        App\Admin\AdminPanel::class,
+    ],
+    // ...
+];
+```
+
+`app/Admin/Pages` must exist before this boots. A discovery directory that does not exist throws. Once a page is in it, the panel answers under `/admin`. [Your first page](/docs/getting-started/first-page) walks through creating one.
+
+## Identity and routing
+
+| Method | Default | What it controls |
+|---|---|---|
+| `id(string)` | none (required) | The panel's identity. Every route the panel registers is named `tbtop.{id}.*`. |
+| `prefix(string)` | the id | The URL prefix every page and endpoint sits under. |
+| `guard(string)` | `'web'` | The auth guard. The panel adds `auth:{guard}` to its middleware stack. |
+| `middleware(array)` | `['web']` | The app middleware stack. It **replaces** the default instead of appending to it. `auth:{guard}` is always added on top. |
+| `rootView(string)` | `'app'` | The Blade view for the first page load. Set it to `'admin'` to use the view `admin:install` published. |
+
+An empty id throws when the panel registry is built, and so does a second panel with the same id.
+
+<Callout type="warn" title="Changing the id renames every route">
+  The id feeds every route name, and every route name is part of the panel's contract. `route()` calls, redirects and tests that name `tbtop.admin.*` break when the id changes. Choose the id once. The prefix can change more freely. Leave `prefix()` unset and it follows the id.
+</Callout>
+
+The panel root (`/admin`, also the logo link) redirects to the first registered page whose path has no route parameters. Declare your landing page first in `pages()`: explicit pages come before discovered ones, and discovered pages follow in alphabetical class-name order. The redirect does not look at page middleware, so a public page such as a login page can be picked if it comes first. If a page's `path()` is the empty string, that page owns the root and no redirect is registered.
+
+A login page whose `middleware()` returns `['web']` without `guest` stays reachable to signed-in users, who see the form again. To send them into the panel instead, add `'guest'` to its stack (`'guest:{guard}'` when the panel's `guard()` is not the default) and scope `redirectUsersTo()` in `bootstrap/app.php` the way [Authentication](/docs/getting-started/authentication#send-guests-to-it) scopes `redirectGuestsTo()`, because it changes the redirect for every `guest` route in the app: return your landing page's URL, such as `/admin/posts`, for `$request->is('admin', 'admin/*')`, not `/admin`, which can redirect back to the login page.
+
+## Pages: explicit or discovered
+
+A panel gets its pages in one of two ways, and you can combine them.
+
+```php
+$panel
+    ->pages([DashboardPage::class])          // explicit list, registered first
+    ->discoverPages(
+        in: app_path('Admin/Pages'),          // must be an existing directory
+        for: 'App\\Admin\\Pages',             // its PSR-4 namespace
+    );
+```
+
+- `pages()` replaces the explicit list each time you call it. The order you give is kept.
+- `discoverPages()` scans the directory recursively. It registers every concrete `Page` subclass whose class name matches its file path. Abstract classes and non-page classes are skipped. Call it again to add another root.
+- Discovered pages follow the explicit ones, sorted alphabetically by fully qualified class name. Duplicates are removed.
+- To keep a page out of discovery, override `public static function isDiscovered(): bool` and return `false`. Listing it in `pages()` still registers it.
+- A panel with discovery enabled rejects two pages with the same slug or the same path, and says which classes collided.
+
+Discovery order is alphabetical, so two parameterized paths that overlap (say `posts/{post}` and `posts/{slug}`) match in class-name order. List such pages explicitly in `pages()` to control which one wins.
+
+In production, cache the discovery index. See [Deploy](/docs/getting-started/deploy).
+
+## Access control
+
+With the defaults, every page requires a user signed in on the `web` guard. Nothing else is checked. If your app has non-staff users on the same guard, customers included, they can open the panel. Pick one of these:
+
+- **A gate for the whole panel.** Add Laravel's `can` middleware to the stack. Laravel's middleware priority runs `auth` before `can`, so guests are still redirected to sign in.
+
+  ```php
+  // AppServiceProvider::boot()
+  Gate::define('access-admin', fn (User $user): bool => $user->is_staff);
+
+  // AdminPanel::configure()
+  $panel->middleware(['web', 'can:access-admin']);
+  ```
+
+- **A separate guard.** Define one in `config/auth.php` and call `->guard('admin')`.
+- **A gate per page.** Override `public static function can(): ?string` on a page to name a gate ability. This is covered in [Pages](/docs/authoring/pages).
+
+A page can also replace the panel's stack for itself and its endpoints with `public static function middleware(PanelConfig $panel): ?array`. A login page uses this to stay public. See [Authentication](/docs/getting-started/authentication).
+
+## The shell
+
+These settings change the chrome around every page. None of them is required. Colours, fonts, the logo and the rest of the admin's look are covered in [Customize the panel](/docs/getting-started/customization).
+
+```php
+return $panel
+    ->id('admin')
+    ->rootView('admin')
+    ->brand('Acme')                       // name shown in the sidebar or top bar header
+    ->navigation('sidebar')               // 'sidebar' | 'topbar' | 'topbar-sidebar'
+    ->maxContentWidth('7xl')              // Tailwind max-w token: sm … 7xl, full, prose
+    ->density('compact')                  // 'default' | 'compact'
+    ->defaultThemeMode('system')          // 'light' | 'dark' | 'system'
+    ->darkMode(true)                      // false forces light and hides the toggle
+    ->breadcrumbs(true)                   // send breadcrumbs with every page
+    ->unsavedGuard(true)                  // warn before leaving a form with unsaved edits
+    ->locales(['en', 'uk'])               // admin UI languages, first is the default
+    ->defaultLocale('en');
+```
+
+- **Navigation layout.** All three layouts collapse to a drawer on small screens. An unknown value throws.
+- **Content width.** Without `maxContentWidth()`, page content is capped at `5xl`.
+- **Theme.** `defaultThemeMode()` applies only when the visitor has no saved `tbtop_theme` cookie. If you pick a default other than `system`, change the inline script in `admin.blade.php` too; see [Dark mode](/docs/getting-started/customization#dark-mode). Colours, radius and fonts are not panel settings: they are CSS variables in `resources/css/admin.css`, covered in [Colours](/docs/getting-started/customization#colours).
+- **UI language.** `locales()` is the language of the admin interface. The chosen locale is kept in the session. The package ships English and Ukrainian strings. With two or more locales, the user menu shows a language switcher. The languages your *content* is stored in are a different setting: `content_locales` in `config/tbtop-admin.php`.
+
+### Header, sidebar and footer
+
+The stock shell has a logo and the navigation menu in the sidebar, and the user menu in the header. To change it, point `->chrome()` at a subclass of `Tbtop\Admin\Panels\Chrome`:
+
+```php
+$panel->chrome(AdminChrome::class);
+```
+
+The subclass overrides `headerItems()`, `sidebarItems()` or `footer()` and returns ordinary DSL nodes. [Header, sidebar and footer](/docs/getting-started/customization#header-sidebar-and-footer) has a full example and the list of shell blocks.
+
+The stock header has no theme toggle. Add `$s->themeToggle()` if users should be able to switch themes. The notification bell (`$s->notifications()`) lists the signed-in user's Laravel database notifications. It needs the `notifications` table (`php artisan make:notifications-table`, then `php artisan migrate`), and your user model needs the `Notifiable` trait so notifications can be stored for it. Without the table, every poll fails with a SQL error. The bell polls every 30 seconds by default. Change the interval with `->notificationsPolling(60)`, or pass `null` to fetch only when the bell opens.
+
+### Navigation and the command palette
+
+Pages put themselves in the menu through their own `nav()` method. At the panel level, `navigationGroups()` sets group icons and collapsing, `navigationItems()` adds links that are not pages, and `userMenuItems()` adds entries to the user menu. All three are covered in [Navigation](/docs/authoring/navigation).
+
+The command palette (⌘K) is on by default. It searches the navigation. Disable it with `->commandPalette(false)`, or pass a closure to add commands:
+
+```php
+use Tbtop\Admin\CommandPalette\Command;
+use Tbtop\Admin\CommandPalette\CommandPaletteConfig;
+
+$panel->commandPalette(fn (CommandPaletteConfig $palette) => $palette->commands([
+    Command::make('New post')->url('/admin/posts/new'),
+]));
+```
+
+## Several panels
+
+Each panel is its own class in the `panels` list, with a distinct id and prefix:
+
+```php
+'panels' => [
+    App\Admin\AdminPanel::class,       // id 'admin',   prefix 'admin'
+    App\Support\SupportPanel::class,   // id 'support', prefix 'support'
+],
+```
+
+Panels do not share pages, navigation or middleware. Each one registers its own routes (`tbtop.admin.*`, `tbtop.support.*`) and its own "not found" fallback under its prefix. Media-library storage and content locales come from the config file, so all panels share them.
+
+## Reference
+
+Every `PanelConfig` and `Chrome` method, with signatures: [API reference: Panel](/docs/api/panel).

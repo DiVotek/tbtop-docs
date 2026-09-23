@@ -1,72 +1,169 @@
 ---
 title: "Install"
-description: "PHP, Laravel and Tailwind version requirements, the Composer and npm commands, and the artisan install step that follows."
+description: "Add tbtop/admin and its React client to an existing Laravel app, publish the host wiring, and finish the four steps the installer leaves to you."
 ---
 
-Tabletop installs into a Laravel application you already have. Two packages release in lockstep — the PHP DSL and the React client that renders it — so they go in together, followed by one Artisan command that publishes the three files the package cannot own for you.
+Tabletop installs into a Laravel application you already have. It ships as two packages released in lockstep from one tag: `tbtop/admin` on Packagist (the PHP DSL, controllers and routes) and `@tbtop/inertia-admin` on npm (the React client that renders what the DSL describes). You install both, run one Artisan command that publishes three host files, then make four small edits in files the package deliberately does not touch.
 
 ## Requirements
 
-The package is checked against these versions and declares them in its own composer constraints:
+| | Version | Why |
+|---|---|---|
+| PHP | 8.4 or newer | `tbtop/admin` requires `php: ^8.4` |
+| Laravel | 11, 12 or 13 | `illuminate/contracts: ^11.0 \|\| ^12.0 \|\| ^13.0` |
+| Inertia (server) | `inertiajs/inertia-laravel` 3.1+ | Pulled in by Composer |
+| React | 19 | Peer dependency of the client |
+| Inertia (client) | `@inertiajs/react` 3 | The admin entry calls `createInertiaApp` |
+| Tailwind CSS | v4, compiled by your Vite build | The client ships a Tailwind *source* file, not built CSS |
+| PHP GD extension | optional | Without it, uploaded images are stored but no resized variants (thumbnails) are generated |
 
-- PHP 8.4
-- Laravel 11, 12 or 13
-- React 19 over Inertia
-- Tailwind v4 on the host — the client ships a Tailwind source, not built CSS
+The host app does not need to be an Inertia app already, but it must be able to serve Inertia responses. That means an Inertia middleware in the `web` group, covered [below](#set-up-inertia-on-the-server).
 
-## Install the package
+## Install the packages
 
-The Composer and npm packages share a version and are installed together:
+Install both halves at the same version:
 
+```bash
+composer require tbtop/admin:^0.5.1
+npm install --save-exact @tbtop/inertia-admin@0.5.1
 ```
-composer require tbtop/admin
-npm install @tbtop/inertia-admin
+
+The PHP package and the npm package describe one wire format between them, so keep their versions identical. `--save-exact` writes `"0.5.1"` to `package.json` instead of `"^0.5.1"`. The Composer constraint `^0.5.1` allows later 0.5.x patches, so check `composer.lock` and `package-lock.json` agree after every update, or pin Composer exactly with `tbtop/admin:0.5.1`. When you upgrade one, upgrade the other in the same change.
+
+The service provider (`Tbtop\Admin\AdminServiceProvider`) is auto-discovered. You do not register it by hand.
+
+If your app does not have them yet, install the client-side build dependencies the admin entry uses:
+
+```bash
+npm install react@^19 react-dom@^19 @inertiajs/react@^3
+npm install -D @vitejs/plugin-react laravel-vite-plugin tailwindcss @tailwindcss/vite
 ```
 
-The service provider and the Admin facade are registered automatically; there is no provider to add by hand. The package also ships its own migrations for the media library and runs them itself, so no separate migrate step is needed.
+The client depends on `@inertiajs/react` 3. If your app is still on `@inertiajs/react` 2, upgrade it first. Otherwise npm installs a second copy for the client, your `admin.tsx` boots Inertia from one copy while the client reads page data from the other, and the panel does not render.
+
+## Run the migrations
+
+The package ships four migrations for its media library (the `tbtop_media_folders` and `tbtop_media` tables). They load from the vendor directory, so you do not publish them. They run with your normal migrations:
+
+```bash
+php artisan migrate
+```
+
+To change them before they run, publish copies with `php artisan vendor:publish --tag="tbtop-admin-migrations"`.
 
 ## Publish the config
 
-The config file is published on its own tag:
-
-```
+```bash
 php artisan vendor:publish --tag="tbtop-admin-config"
 ```
 
-That writes `config/tbtop-admin.php`, whose `panels` key is the list of panel classes. A panel that is not listed there has no routes.
+This writes `config/tbtop-admin.php`. The key you need right away is `panels`, the list of panel classes. **A panel that is not listed there has no routes.** Everything else about a panel (prefix, guard, pages, locales, chrome) lives in the panel class, not in this file. The other keys cover content locales for translatable fields, the relation-search row cap and media-library storage. See [Register a panel](/docs/getting-started/panel) for what belongs where.
 
-## Publish the wiring
+## Publish the host wiring
 
-One command publishes the host files the package deliberately does not own:
-
-```
+```bash
 php artisan admin:install
 ```
 
-It writes three files — `resources/views/admin.blade.php` (the root Blade view), `resources/js/admin.tsx` (the admin JS entry) and `resources/css/admin.css` (the stylesheet). Existing files are left untouched and reported; pass `--force` to overwrite them.
+The command writes three files:
 
-The command then prints the steps it will not take for you, because rewriting a host build config from a package is how installers silently break projects:
+| File | What it is |
+|---|---|
+| `resources/views/admin.blade.php` | The root Blade view for admin pages. It loads only the admin entry, and sets the dark-mode class from the `tbtop_theme` cookie before first paint. |
+| `resources/js/admin.tsx` | The admin JavaScript entry. It boots Inertia and resolves `admin/page` to the client's `AdminPage` component. |
+| `resources/css/admin.css` | The admin stylesheet. It imports `@tbtop/inertia-admin/styles.css` and adds `@source '../../app/**/*.php'` so Tailwind sees class names written in PHP. |
 
-- Add resources/js/admin.tsx to the Vite input list.
-- Point the panel at the published root view with ->rootView('admin').
-- Install Tailwind v4 and add its Vite plugin.
-- Run npm run build.
+If a file already exists, the command leaves it untouched and says so. Pass `--force` to overwrite it. It does **not** publish the config file. That is the separate `vendor:publish` step above.
 
-## Open the panel
+The admin gets its own entry, view and stylesheet so that your public frontend does not load the admin bundle. The rich-text editor alone is around 270 KB.
 
-Register your panel class in the panels key of the config, build the assets, and the panel answers under its own prefix.
+## Finish the four manual steps
 
-### Change the prefix
+After writing the files, `admin:install` prints four steps. It does not do them for you because they edit files the package does not own.
 
-The prefix is not a config key — it belongs to the panel, set in its configure() method:
+**1. Add the admin entry to Vite's input list** in `vite.config.ts`:
 
+```ts
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import laravel from "laravel-vite-plugin";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+	resolve: {
+		dedupe: ["react", "react-dom", "@inertiajs/react"],
+	},
+	plugins: [
+		laravel({
+			input: ["resources/css/app.css", "resources/js/app.tsx", "resources/js/admin.tsx"],
+			refresh: true,
+		}),
+		react(),
+		tailwindcss(),
+	],
+});
 ```
-->prefix('admin')
+
+The `input` line is the one `admin:install` prints. Keep whatever inputs your app already has and append `resources/js/admin.tsx`. If your app has no `resources/js/app.tsx`, do not list it, or the build fails on a missing input. `admin.css` is imported by `admin.tsx`, so it does not need its own input entry. The `dedupe` line stops Vite from bundling two copies of React or Inertia when a dependency resolves its own.
+
+**2. Point the panel at the published root view.** The panel's root view defaults to `app`, so without this step admin pages render through your main layout and load the wrong bundle. In the panel's `configure()` method:
+
+```php
+->rootView('admin')
 ```
 
-Left unset, the prefix falls back to the panel id, which also feeds the route-name namespace tbtop.\{id\}.*. Changing the id on a panel that is already live renames every one of its routes.
+**3. Compile Tailwind v4 in the host build.** Install `tailwindcss` and `@tailwindcss/vite`, and add `tailwindcss()` to the Vite plugins, as shown above.
 
-### Next steps
+**4. Install the client and build.** The installer prints `npm install @tbtop/inertia-admin && npm run build`, with no version. You already installed the pinned client above, so only build:
 
-- [Register a panel](/docs/getting-started/panel) — the class that owns the prefix, the guard and the pages.
-- [Write your first page](/docs/getting-started/first-page) — a page is a PHP class that serializes to a typed contract.
+```bash
+npm run build
+```
+
+## Set up Inertia on the server
+
+`admin:install` does not mention this, but the panel depends on it. Admin responses are Inertia responses, and form validation errors reach the fields through Inertia's shared `errors` prop, which the Inertia middleware provides. If your app has no Inertia middleware yet, create one and add it to the `web` group:
+
+```bash
+php artisan inertia:middleware
+```
+
+```php
+// bootstrap/app.php
+use App\Http\Middleware\HandleInertiaRequests;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->web(append: [HandleInertiaRequests::class]);
+})
+```
+
+The panel also reads the signed-in user from a shared `auth.user` prop. Without it, the user menu (logout, language switcher) does not render. [Authentication](/docs/getting-started/authentication) shows what to share.
+
+## Render the 404 page
+
+The published `admin.tsx` resolves only `admin/page`. The panel also renders `admin/error` for unknown URLs under its prefix and for a `findOrFail()` that misses inside a page. With the stub unchanged, those requests throw `[admin] No component found for page: admin/error` in the browser. Add the second branch:
+
+```tsx
+resolve: async (name) => {
+	const mod = await import("@tbtop/inertia-admin");
+	if (name === "admin/page") {
+		return { default: mod.AdminPage };
+	}
+	if (name === "admin/error") {
+		return { default: mod.AdminErrorPage };
+	}
+	throw new Error(`[admin] No component found for page: ${name}`);
+},
+```
+
+## Gotchas
+
+- **Only one Inertia app per page load.** The admin bundle resolves only `admin/*` components. An Inertia visit from an admin page to a page rendered by your main `app.tsx`, or the other way round, fails in the browser. Keep screens that admin users reach inside the panel, including the login page. Redirects that leave the panel should be full page loads.
+- **Classes written in PHP need an `@source` line.** If your pages live outside `app/`, or a package of yours writes admin classes, add one `@source` line per directory to `resources/css/admin.css`. Without it, those classes compile to nothing.
+- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.5.1 ships no facade class behind it. Everything is configured through the panel class and page classes.
+
+## Next steps
+
+- [Register a panel](/docs/getting-started/panel): the class that owns the prefix, the guard and the pages.
+- [Authentication](/docs/getting-started/authentication): the package ships no login backend, so this page shows how to wire one.
+- [Write your first page](/docs/getting-started/first-page): a table, a create form and an edit form, end to end.

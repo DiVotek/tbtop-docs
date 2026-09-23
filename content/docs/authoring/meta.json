@@ -1,4 +1,4 @@
 {
 	"title": "Authoring",
-	"pages": ["pages", "fields", "tables", "forms", "actions", "navigation"]
+	"pages": ["pages", "layout", "fields", "forms", "tables", "actions", "navigation"]
 }

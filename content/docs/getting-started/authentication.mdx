@@ -1,0 +1,179 @@
+---
+title: "Authentication"
+description: "Wire sign-in, sign-out and the signed-in user into a panel, since tbtop/admin ships the guard check but no login backend."
+---
+
+A panel checks authentication, but it does not perform it. Every page runs behind `auth:{guard}`. The package ships no login screen, no logout route and no password reset. Those are plain Laravel, and they are yours to add. This page wires the three pieces the panel expects:
+
+1. somewhere to send guests,
+2. a `POST {prefix}/logout` route for the user menu,
+3. the signed-in user shared as the `auth.user` Inertia prop.
+
+## Write the login page with the DSL
+
+A login page written with the DSL is an ordinary admin page. It renders in the admin bundle like every other page, so the sign-in form, the redirect after it and the page the user lands on all stay in one Inertia app. This is the recommended path, and the reference demo takes it: a public page on the chrome-less `center` layout.
+
+The exception is a login screen you already have as React in your app's own Inertia bundle, such as a Breeze screen. That bundle cannot render `admin/*` pages, so its handoff into the panel has to be a full page load. See [Using an existing auth backend](#using-an-existing-auth-backend).
+
+## A login page
+
+```php
+<?php
+
+namespace App\Admin\Pages;
+
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+use Tbtop\Admin\Pages\Page;
+use Tbtop\Admin\Panels\PanelConfig;
+
+class LoginPage extends Page
+{
+    public static function path(): string
+    {
+        return 'login';
+    }
+
+    // Public: replaces the panel's stack, so auth:{guard} is not applied.
+    public static function middleware(PanelConfig $panel): array
+    {
+        return ['web'];
+    }
+
+    public function layout(): string
+    {
+        return 'center';
+    }
+
+    public function title(): string
+    {
+        return 'Sign in';
+    }
+
+    public function view(S $s): Node
+    {
+        return $s->stack([
+            $s->displayText('Sign in')->variant('heading'),
+            $s->form('login', [
+                $s->text('email')->label('Email')->required()->rules('email'),
+                $s->password('password')->label('Password')->required(),
+                $s->actionsRow([
+                    $s->action('submit')->label('Sign in')->color('primary')->submit(),
+                ]),
+            ])
+                ->record(['email' => '', 'password' => ''])
+                ->onSubmit(function (ActionCtx $ctx): string {
+                    $credentials = [
+                        'email' => $ctx->form['email'],
+                        'password' => $ctx->form['password'],
+                    ];
+
+                    if (! Auth::guard('web')->attempt($credentials)) {
+                        throw ValidationException::withMessages([
+                            'email' => __('auth.failed'),
+                        ]);
+                    }
+
+                    $ctx->request->session()->regenerate();
+
+                    return $ctx->request->session()->pull('url.intended', '/admin');
+                }),
+        ]);
+    }
+}
+```
+
+How it works:
+
+- **`middleware()` returning `['web']`** replaces the panel's `['web', 'auth:web']` for this page and all its endpoints, so a guest can reach it. The panel binding, the UI locale and the shared `tbtop` props still apply. The media library and locale-switch endpoints stay behind auth either way, because they live only in the panel's default group.
+- **`layout()` returning `'center'`** drops the sidebar and header and centers the content. The page title and breadcrumbs are not rendered on this layout, so the page draws its own heading.
+- **`onSubmit` returning a string** turns into a redirect to that URL. A `ValidationException` thrown inside it lands on the named field, like any other validation error.
+- **`url.intended`** is where Laravel stored the page the guest originally asked for.
+- **`nav()`** is not overridden, so the page stays out of the menu.
+
+If the panel uses page discovery, putting this class in the discovered directory registers it. Otherwise add it to `pages()`. It is named `tbtop.admin.login-page` (the panel id plus the kebab-cased class name), and it answers at `/admin/login`.
+
+The panel root redirects to the first registered page with a static path, so declare your landing page before the login page. See [Identity and routing](/docs/getting-started/panel#identity-and-routing).
+
+<Callout type="info">
+  The package does not rate-limit sign-in attempts. Add Laravel's `RateLimiter` to the submit handler before you expose the panel publicly.
+</Callout>
+
+## Send guests to it
+
+When a guest hits a protected page, Laravel's `auth` middleware redirects to the route named `login`. If your app has no such route, that redirect fails. Point it at the panel's login page instead:
+
+```php
+// bootstrap/app.php
+use Illuminate\Http\Request;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->redirectGuestsTo(fn (Request $request): string => route('tbtop.admin.login-page'));
+})
+```
+
+If your app already has a `login` route for the public site, `redirectGuestsTo()` sends *every* guest to the admin login. To keep the site's own login, return a different URL for admin requests. Match the panel root as well as the paths under it, because `/admin` is itself a protected route:
+
+```php
+$middleware->redirectGuestsTo(fn (Request $request): string => $request->is('admin', 'admin/*')
+    ? route('tbtop.admin.login-page')
+    : route('login'));
+```
+
+## Sign out
+
+The user menu's "Logout" item posts to `{prefix}/logout`, which is `/admin/logout` for a panel mounted at `admin`. The package does not register that route. Add it in `routes/web.php`:
+
+```php
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
+
+Route::post('admin/logout', function (Request $request) {
+    Auth::guard('web')->logout();
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
+
+    return redirect()->route('tbtop.admin.login-page');
+})->middleware(['web', 'auth']);
+```
+
+Redirect to a page inside the panel. The logout request is an Inertia visit from the admin bundle, so the admin bundle has to be able to render the destination.
+
+## Share the signed-in user
+
+The package shares its own props under `tbtop`, but it does not share the user. The header's user menu reads `auth.user` and renders nothing when it is missing, and that menu holds the logout item and the language switcher. Share a small, explicit shape from your Inertia middleware:
+
+```php
+// app/Http/Middleware/HandleInertiaRequests.php
+public function share(Request $request): array
+{
+    $user = $request->user();
+
+    return array_merge(parent::share($request), [
+        'auth' => [
+            'user' => $user ? ['name' => $user->name, 'email' => $user->email] : null,
+        ],
+    ]);
+}
+```
+
+The menu shows `name`, and falls back to the part of `email` before the `@`. Share only fields you are happy to send to the browser. Passing the whole model is how hidden attributes leak later.
+
+## Using an existing auth backend
+
+If your app already uses Breeze, Fortify or your own controllers, you can keep them for the credential check: call their logic from `onSubmit` on a DSL login page.
+
+If you keep a hand-written React login screen in your app's bundle instead, end its sign-in with a full page load into the panel. From a controller that answers an Inertia request, return `Inertia::location('/admin')`. Inertia replies with `409` and an `X-Inertia-Location` header, and the browser loads the URL from scratch. A plain `redirect()` is followed inside the app's bundle, which cannot render the admin page. A classic HTML form post (not an Inertia visit) can use a plain `redirect()`.
+
+## See it in the demo
+
+The live demo's sign-in screen is a DSL page like the one above: [demo.tbtop.dev/admin/login](https://demo.tbtop.dev/admin/login).
+
+## Next steps
+
+- [Write your first page](/docs/getting-started/first-page).
+- [Register a panel](/docs/getting-started/panel#access-control): limit the panel to staff.

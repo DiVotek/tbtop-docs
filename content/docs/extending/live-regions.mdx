@@ -1,5 +1,169 @@
 ---
 title: "Live regions"
+description: "Server-rendered parts of a form that re-render in PHP whenever the fields they depend on change."
 ---
 
-This page is being written.
+A live region is a piece of a form whose content is computed in PHP from the form's
+current, unsaved values. Put one next to the fields and name the fields it depends on.
+When one of those fields changes, the client posts their values to the server, your
+closure runs again, and the region's content is replaced with the new display nodes.
+
+Use a live region when a preview needs something only the server has: a price from the
+database, a permission check, a business rule you don't want to duplicate in TypeScript.
+You write no client code. The API is `$s->liveRegion()`, which returns a
+[`LiveRegionBuilder`](/docs/api/blocks#liveregionbuilder) with three methods that matter:
+`dependsOn()`, `render()` and `when()`.
+
+## A minimal example
+
+An order-line form that shows the line total for the chosen product and quantity:
+
+```php
+use App\Models\Product;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Dsl\FormBuilder;
+use Tbtop\Admin\Dsl\S;
+
+private function form(S $s): FormBuilder
+{
+    return $s->form('orderLine', [
+        $s->relation('product_id')->label('Product')
+            ->query(fn () => Product::query()->orderBy('name'))
+            ->labelKey('name')->searchable()
+            ->rules('required|exists:products,id'),
+        $s->number('quantity')->label('Quantity')->rules('required|integer|min:1'),
+
+        $s->liveRegion('lineTotal')
+            ->dependsOn(['product_id', 'quantity'])
+            ->render(function (array $deps, S $r): array {
+                $product = Product::query()->find($deps['product_id'] ?? null);
+                if ($product === null) {
+                    return [$r->displayAlert('Pick a product to see the total.')->color('info')];
+                }
+                $quantity = max(0, (int) ($deps['quantity'] ?? 0));
+
+                return [
+                    $r->displayKeyValue([
+                        'Unit price' => number_format($product->price_cents / 100, 2).' USD',
+                        'Quantity' => (string) $quantity,
+                    ]),
+                    $r->displayValue($product->price_cents * $quantity)->money('USD'),
+                ];
+            }),
+
+        $s->actionsRow([
+            $s->action('save')->label('Save')->color('primary')->submit(),
+        ]),
+    ])
+        ->record(['product_id' => null, 'quantity' => 1])
+        ->onSubmit(function (ActionCtx $ctx): string {
+            // Save $ctx->form here, then redirect.
+            return '/admin/orders';
+        });
+}
+```
+
+The closure receives two arguments: `$deps`, the current values of the fields named in
+`dependsOn()`, and a fresh `S` instance to build the returned nodes with. It returns one
+node or a list of nodes.
+
+## How it works
+
+1. **First render, on the server.** While the page is built, the closure runs once with
+   the form's `record()` values for the declared fields. The result ships in the page
+   props, so an edit form opens with the region already filled in and no extra request.
+2. **A dependency changes.** The client watches the declared fields. When their values
+   change, it sends `POST {page-path}/live-region/{name}` with `{"deps": {...}}`.
+3. **The server re-renders.** The endpoint builds the page again, finds the region by
+   name, filters the posted values down to the `dependsOn()` list and runs the closure
+   again. The response is `{"nodes": [...]}`.
+4. **The client swaps the content.** While the request runs, the old content stays
+   visible but dimmed. If you change the fields again before an answer arrives, only the
+   answer for the latest values is applied. A failed request shows an error box inside
+   the region.
+
+A region that becomes visible later, for example inside a tab or a collapsed section,
+checks whether the form has changed since the first render and reloads immediately if
+it has.
+
+## What `$deps` contains
+
+- Only the fields you declared. Anything else in the request is dropped.
+- Scalars, cast to **strings**. `true`/`false` become `"1"`/`"0"`. Cast numbers yourself.
+- Empty values are left out. A field that is empty, or holds an array, has **no key** in
+  `$deps`, so always read with a fallback: `$deps['quantity'] ?? 0`.
+- For a [translatable](/docs/authoring/fields#translatable-fields) field, declare one locale at a time:
+  `dependsOn('title.en')`.
+
+## Rules for the render closure
+
+**Return display nodes only.** Text, alerts, key-value lists, display values, layout
+containers and your own [custom blocks](/docs/extending/client-components) are all fine.
+A form field is not: returning one throws an `InvalidArgumentException`, because a form
+cannot change which fields it has after it is rendered.
+
+**Keep it pure.** The closure runs at page build time and again on every request. It
+should read `$deps` and variables it captured with `use`, and nothing else. Don't write
+to the database in it.
+
+**Capture the record, not the request.** On an edit page, capture the model the page
+loaded, for example `function (array $deps, S $r) use ($order) { ... }`. The region's
+endpoint lives under the page's own URL and runs the page's `view()` again, so the model
+is loaded again from the same route parameters, and the page's `can()` gate is checked
+again, as on the first page load.
+
+**Treat `$deps` as user input.** The values come straight from the browser. They are
+filtered to the declared keys, but the form's `rules()` do not run on them. Cast, look up
+with `find()` and handle `null`, as the example does.
+
+## Showing, hiding and access
+
+A region takes the same conditions as other nodes, but the two kinds behave differently:
+
+- `hiddenIf()` hides the region in the browser. The node is still sent and its endpoint
+  still answers.
+- `when(false)` removes the region on the server. It is not sent, and its endpoint
+  answers 404. Use `when()` whenever the content must not be seen by some users.
+
+```php
+$s->liveRegion('margin')
+    ->when(fn () => auth()->user()?->can('viewMargins') ?? false)
+    ->dependsOn(['product_id', 'unit_price'])
+    ->render(fn (array $deps, S $r) => $r->displayText('...')),
+```
+
+The endpoint also checks the page's `can()` gate, like every other page endpoint.
+
+## Gotchas
+
+- **It must be inside a form.** Its dependencies are that form's fields, and the endpoint
+  only looks for regions inside the page's forms. A region placed outside any form never
+  reloads.
+- **One request per change, with no debounce.** Every change to a declared field sends a
+  request, so a region that depends on a free-text field sends one per keystroke. Prefer
+  selects, numbers, toggles and dates as dependencies.
+- **The whole page view is rebuilt per request.** Heavy work in your page's `view()` runs
+  on every region reload too. Keep expensive queries inside the closures that need them.
+- **Names must be unique on the page.** The endpoint uses the first region it finds with
+  the requested name.
+- **Repeater rows can't be dependencies.** Only scalar fields work. For a total that
+  follows repeater rows as the user types, use a block that reads the form on the client
+  with `useNearestFormController()`, and compute the real value again on submit. See
+  [Blocks that read the form](/docs/extending/client-components#blocks-that-read-the-form).
+- **Actions inside a region.** A region may contain action buttons, but their server
+  handlers are looked up using the first-render values. A re-render may change whether an
+  action is visible (`hiddenIf()`); it must not add or remove the action itself.
+- **Not a place for validation.** Showing a warning in a region is fine, but the real
+  check still belongs in the field's `rules()` or your submit handler.
+
+## When to use something else
+
+| You need | Use |
+|---|---|
+| Content that changes with form input and needs the server | A live region |
+| Pure client-side math over form values, updated on every keystroke | A [form-aware custom block](/docs/extending/client-components#blocks-that-read-the-form) |
+| A select whose options depend on another field | `dependsOn()` on the select or relation field itself, see [Fields](/docs/authoring/fields#cascading-pickers-dependson) |
+| Content that depends only on the record, not on unsaved input | Plain display blocks built in `view()` |
+| Show or hide a fixed piece of UI based on a field | `hiddenIf()` on that node |
+
+[Dynamic forms](/docs/authoring/forms#dynamic-forms) compares all of these side by side.

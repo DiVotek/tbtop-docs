@@ -1,5 +1,297 @@
 ---
 title: "Forms"
+description: "Building a form with $s->form(), seeding it with record(), validating with Laravel rules, saving in onSubmit, and making it dynamic with conditions, dependent fields and server-rendered live regions."
 ---
 
-This page is being written.
+A form is a named group of fields with one server-side submit handler. You declare it inside a page's `view()` with `$s->form()`, give it initial values with `record()`, and handle the validated input in `onSubmit()`. Validation is always Laravel validation on the server; the client only mirrors some rules for faster feedback.
+
+A page can hold any number of forms, next to tables, stats and other blocks. See [Several forms on one page](#several-forms-on-one-page).
+
+## A complete form
+
+```php
+use App\Models\StoreSettings;
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+use Tbtop\Admin\Dsl\Actions\FormActions;
+use Tbtop\Admin\Dsl\Node;
+use Tbtop\Admin\Dsl\S;
+
+public function view(S $s): Node
+{
+    $settings = StoreSettings::firstOrCreate([]);
+
+    return $s->stack([
+        $s->form('settings', [
+            $s->section(['title' => 'Store'], [
+                $s->text('store_name')->label('Store name')->required()->maxLength(200),
+                $s->text('support_email')->label('Support email')->rules('nullable|email'),
+            ]),
+            $s->section(['title' => 'Checkout'], [
+                $s->boolean('guest_checkout')->label('Allow guest checkout')->rules('boolean'),
+                $s->number('min_order')->label('Minimum order')->step('0.01')->minValue(0),
+            ]),
+            $s->actionsRow([FormActions::save($s)]),
+        ])
+            ->record($settings->only(['store_name', 'support_email', 'guest_checkout', 'min_order']))
+            ->onSubmit(function (ActionCtx $ctx): Effects {
+                StoreSettings::firstOrCreate([])->update($ctx->form);
+
+                return Effects::make()->notify('Saved');
+            }),
+    ]);
+}
+```
+
+The four parts:
+
+- **`$s->form('settings', [...])`** registers a form named `settings`. Children are fields plus any layout — sections, grids, tabs, rows — nested as deep as you like. The name must be unique on the page; it is how the submit request finds the form again.
+- **`record([...])`** sets the initial values, keyed by field name.
+- **A submit button.** `FormActions::save($s)` is a primary Save button bound to <kbd>Mod</kbd>+<kbd>S</kbd>. `FormActions::saveCancel($s, '/admin/…')` adds a Cancel that navigates away. Any action with `->submit()` works too: `$s->action('publish')->label('Publish')->submit()`.
+- **`onSubmit()`** runs on the server after validation passes.
+
+See it in the demo: [Site settings](https://demo.tbtop.dev/admin/settings) is a form of this shape.
+
+## Initial values
+
+`record()` is the form's starting state. A field's `->default()` fills in only keys the record does not contain — an explicit key always wins, even `null`:
+
+```php
+$s->select('currency')->label('Currency')->options([
+    ['value' => 'EUR', 'label' => 'Euro'],
+    ['value' => 'USD', 'label' => 'US dollar'],
+])->default('EUR'),
+```
+
+Two things to get right about the record:
+
+- **It is sent to the browser.** The record ships in the page props, so pass only the fields the form edits — `$model->only([...])` or an explicit array — not a whole `toArray()` of a model with columns the user should not see.
+- **Values must be in the shape the field expects.** A `date` field reads a `Y-m-d` string; a `datetime` cast serializes to a full ISO timestamp and the date picker shows nothing. Select and radio option values travel as strings, so a backed enum goes in as `->value`. When the model's casts do not match, map the values explicitly:
+
+```php
+->record([
+    'status' => $order->status->value,
+    'ship_on' => $order->ship_on?->format('Y-m-d'),
+    'notes' => $order->notes,
+])
+```
+
+[Fields](/docs/authoring/fields) documents the value shape of every field kind, including per-locale maps for translatable fields.
+
+## Validation
+
+Each field carries its own Laravel rules. When the form is submitted, the server walks the form, collects the rules of every field in it, and calls `$request->validate()` with them. A failure returns the user to the form with inline errors under the fields; nothing reaches `onSubmit`.
+
+```php
+$s->text('sku')->label('SKU')->required()->unique('products')->alphaDash(),
+$s->number('stock')->label('Stock')->integer()->minValue(0),
+$s->text('code')->label('Code')->rules(['nullable', 'regex:/^[A-Z]{3}-\d{4}$/']),
+```
+
+`required()` and `rules()` are available on every field. The fluent helpers (`maxLength`, `minValue`, `unique`, `exists`, `nullable`, …) append exactly the rule a raw `rules()` call would, and each field only offers the helpers that make sense for it. The full list is in the [fields reference](/docs/api/fields).
+
+Rules that bite:
+
+- **Pass a `regex:` rule as an array element.** A pipe string is split on `|`, which would cut the pattern; the string form throws for that reason.
+- **`unique()` on an edit page needs `->ignore($id)`**, called after `unique()`, or the record conflicts with itself.
+- **Error messages use the field's `label()`** as the attribute name.
+- **The client mirror is not a boundary.** A subset of rules — `required`, `email`, `url`, `integer`, `min`, `max`, `regex`, `in` — is also checked in the browser, for speed only. Every rule is enforced on the server whatever the client does.
+
+For a rule that depends on the database or on business state, throw a `ValidationException` from `onSubmit`. Laravel turns it into the same inline error as a failed rule:
+
+```php
+use Illuminate\Validation\ValidationException;
+
+->onSubmit(function (ActionCtx $ctx): Effects {
+    $order = Order::findOrFail($ctx->params['order']);
+
+    if ($order->isShipped()) {
+        throw ValidationException::withMessages(['ship_on' => 'A shipped order cannot be rescheduled.']);
+    }
+    // …
+})
+```
+
+## Saving
+
+`onSubmit` receives an `ActionCtx`:
+
+| Property | Contents |
+|---|---|
+| `$ctx->form` | The validated input — only the form's own fields, keyed by name |
+| `$ctx->params` | Route parameters of the page, as strings, derived on the server |
+| `$ctx->user` | The authenticated user, or `null` |
+| `$ctx->request` | The Laravel `Request` |
+
+`$ctx->form` holds only keys that belong to fields in the form; anything else the browser sends is dropped by validation. A field without rules is validated as `nullable`, so it still arrives. Passing `$ctx->form` straight to `create()` or `update()` is the common case — the model's mass-assignment protection still applies.
+
+The handler returns one of two things:
+
+- **An `Effects` chain** — stay on the page and tell the client what to do: `Effects::make()->notify('Saved')`, optionally with `->redirect($url)` to move on after a toast. From `onSubmit` only `notify`, `redirect`, `refreshTable`, `copyToClipboard` and `closeModal` take effect. `setFormData`, `resetForm` and `haltModal` need an action's form or modal context: they are ignored here with a console warning. Use a `handle()` action with `needs: ['form']` for those. The full effect set is in [Actions](/docs/authoring/actions).
+- **A string** — a plain redirect to that URL, with no toast. This is the usual end of a create form: `return "/admin/orders/{$order->id}/edit";`.
+
+## Layout inside a form
+
+A form's children are laid out with the same blocks as the rest of the page ([Layout and content blocks](/docs/authoring/layout)). A form stacks its children, so to put fields side by side wrap them in a `grid` or a `section` with `columns`, where a field takes `->columnSpan()` and `->columnStart()` ([Column spans](/docs/authoring/fields#column-spans)):
+
+```php
+$s->section(['title' => 'Address', 'columns' => 2], [
+    $s->text('street')->label('Street')->columnSpan(2),
+    $s->text('city')->label('City'),
+    $s->text('postcode')->label('Postcode'),
+]),
+```
+
+Fields in a tab that is not open are still part of the form: they submit, and a validation error in one switches to that tab. `$s->unsavedIndicator()` placed next to the Save button shows a small "unsaved changes" hint while the form is dirty.
+
+## Dynamic forms
+
+A form can change while the user fills it in. There are five tools for that, from purely client-side to server-rendered:
+
+| You want | Use | Runs |
+|---|---|---|
+| Hide, disable or require a field depending on another field's value | [`hiddenIf`, `disabledIf`, `requiredIf`](#conditional-fields) | In the browser, no request |
+| A select or relation whose options depend on another field | [`dependsOn()`](/docs/authoring/fields#cascading-pickers-dependson) on that field | Refetches its options when a parent changes |
+| A block whose content is computed in PHP from the current values — a price, a preview, a warning | [A live region](#live-regions) | One request per dependency change |
+| A button that reads the unsaved values and writes new ones into the form | [An action with `needs: ['form']` returning `setFormData()`](#filling-fields-from-the-server) | One request per click |
+| A field that exists only for some users or settings | [`when()`](#removing-a-field-on-the-server) | Once, when the page is built |
+
+## Conditional fields
+
+Three methods make a field react to the values of other fields in the same form, live, in the browser:
+
+| Method | Effect |
+|---|---|
+| `hiddenIf(...)` | Hides the field while the condition holds |
+| `disabledIf(...)` | Disables its input while the condition holds |
+| `requiredIf(...)` | Shows the required marker while the condition holds **and** adds the matching Laravel rule |
+
+Each takes either a shorthand triple — field, operator, value — or a `Cond` object:
+
+```php
+use Tbtop\Admin\Dsl\Cond;
+
+$s->select('customer_type')->label('Customer')->required()->options([
+    ['value' => 'person', 'label' => 'Private person'],
+    ['value' => 'company', 'label' => 'Company'],
+]),
+$s->text('company_name')->label('Company name')
+    ->hiddenIf('customer_type', '!=', 'company')
+    ->requiredIf('customer_type', '=', 'company')
+    ->maxLength(200),
+$s->text('vat_number')->label('VAT number')
+    ->hiddenIf(Cond::any(Cond::neq('customer_type', 'company'), Cond::empty('company_name'))),
+$s->boolean('gift')->label('This is a gift')->rules('boolean'),
+$s->textarea('gift_message')->label('Gift message')
+    ->disabledIf(Cond::not(Cond::truthy('gift'))),
+```
+
+The shorthand operators are `=`, `!=`, `>`, `>=`, `<`, `<=`, `in`, `not in`, and the value-less `empty`, `not empty` and `truthy`. `Cond` has the same comparisons as static methods (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `empty`, `notEmpty`, `truthy`) plus the combinators `Cond::all()`, `Cond::any()` and `Cond::not()`. Use `Cond` when you need AND/OR/NOT, or "is this set at all" — `truthy` treats `0`, `''` and `null` alike, where `= false` matches one literal.
+
+Layout blocks take the same conditions through their options, so a whole section can hide at once: `$s->section(['title' => 'Company', 'hiddenIf' => Cond::neq('customer_type', 'company')], [...])`.
+
+### What hiding does not do
+
+`hiddenIf` and `disabledIf` are presentation. A hidden or disabled field is still in the form: its value is still submitted and **its rules still run on the server**. So:
+
+- **Never put `required()` on a field that can be hidden.** Use `requiredIf()` with the condition under which the field is visible, as `company_name` does above.
+- **Clean up hidden values yourself.** If a user fills in `company_name`, then switches to "Private person", the old value still arrives in `$ctx->form`. Null it out in `onSubmit` when the type says it does not apply.
+- **Compare with the values the client holds.** Select and radio values are strings (`'company'`, `'1'`); a `boolean` field holds `true`/`false`.
+
+`requiredIf()` has to translate the condition into a Laravel rule, so it accepts only conditions Laravel can express: `=` becomes `required_if`, `!=` becomes `required_unless`, `in`/`not in` the list forms of those, `not empty` becomes `required_with`, `empty` becomes `required_without`, and `truthy` becomes `required_if_accepted` — meant for a boolean or checkbox field. The numeric comparisons and the `all`/`any`/`not` combinators throw when the page is built, as does a comparison value that contains a comma.
+
+### Removing a field on the server
+
+When a field should not exist at all for this request — a user without permission, a feature that is off — use `->when()` instead:
+
+```php
+$s->number('discount')->label('Discount')->when(fn () => auth()->user()->can('give-discounts')),
+```
+
+A `when(false)` field is dropped before the page is sent: it is not rendered, its rules are not collected, its default does not reach the browser, and endpoints that belong to it (uploads, select searches) answer 404. `hiddenIf` is for reacting to what the user types; `when` is the access boundary.
+
+## Live regions
+
+A live region is a part of the form rendered on the server from the form's current, unsaved values. You name the fields it depends on; when one of them changes, the client posts their values to the page, your closure runs again and the region's content is replaced. No client code is involved.
+
+```php
+use App\Models\ShippingRate;
+use Tbtop\Admin\Dsl\Actions\FormActions;
+use Tbtop\Admin\Dsl\S;
+
+$s->form('shipment', [
+    $s->select('zone')->label('Zone')->required()->options([
+        ['value' => 'domestic', 'label' => 'Domestic'],
+        ['value' => 'international', 'label' => 'International'],
+    ]),
+    $s->number('weight_kg')->label('Weight, kg')->step('0.1')->minValue(0),
+
+    $s->liveRegion('quote')
+        ->dependsOn(['zone', 'weight_kg'])
+        ->render(function (array $deps, S $r): array {
+            $rate = ShippingRate::query()->where('zone', $deps['zone'] ?? '')->first();
+            if ($rate === null) {
+                return [$r->displayAlert('Pick a zone to see the price.')->color('info')];
+            }
+            $kg = max(0.0, (float) ($deps['weight_kg'] ?? 0));
+
+            return [$r->displayValue($rate->base_cents + (int) round($rate->per_kg_cents * $kg))->money('USD')];
+        }),
+
+    $s->actionsRow([FormActions::save($s)]),
+]);
+```
+
+What to know before using one:
+
+- **`$deps` holds strings, and only non-empty declared fields.** Cast numbers yourself and always read with a fallback, as above.
+- **Return display nodes only.** Text, alerts, key-value lists, display values and layout are fine; a field throws, because a form cannot change its set of fields after rendering.
+- **Every change is a request, with no debounce.** Prefer selects, numbers, toggles and dates as dependencies over free text.
+- **It is not validation.** A warning in a region is fine, but the rule that enforces it belongs in the field's `rules()` or in `onSubmit`.
+
+The first render runs on the server with the `record()` values, so an edit form opens with the region filled in. The full contract — how `$deps` is filtered, repeater limits, access with `when()` — is in [Live regions](/docs/extending/live-regions).
+
+## Filling fields from the server
+
+An action inside the form can read the unsaved values and write new ones back. Declare `needs: ['form']` and return `setFormData()`; the listed top-level fields are replaced and the form stays dirty until the user saves. `PostcodeDirectory` stands for your own lookup:
+
+```php
+use Tbtop\Admin\Actions\ActionCtx;
+use Tbtop\Admin\Actions\Effects;
+
+$s->text('postcode')->label('Postcode'),
+$s->text('city')->label('City'),
+$s->action('lookup-city')->label('Find city')
+    ->handle(function (ActionCtx $ctx): Effects {
+        $city = PostcodeDirectory::cityFor((string) ($ctx->form['postcode'] ?? ''));
+
+        return $city === null
+            ? Effects::make()->notify('Unknown postcode', 'warning')
+            : Effects::make()->setFormData(['city' => $city]);
+    }, needs: ['form'])
+    ->withoutValidation(),
+```
+
+With `needs: ['form']` the values are validated against the form's rules before the handler runs; `withoutValidation()` lets the button work while other fields are still empty. See [Server actions](/docs/authoring/actions#server-actions) and [Effects](/docs/authoring/actions#effects).
+
+## Several forms on one page
+
+A page is not limited to one form. Each `$s->form()` call registers its own form, with its own record, rules, submit endpoint and unsaved-changes guard, and forms sit freely next to tables, stats and display blocks. Submitting one form validates and sends only that form's fields.
+
+- **Give each form a unique name.** A second `$s->form('settings', …)` replaces the first.
+- **Put each form's submit button inside that form.** A `submit()` action sends the values of the form it is rendered in.
+- **Only one form should own <kbd>Mod</kbd>+<kbd>S</kbd>.** `FormActions::save()` binds that shortcut, and when several buttons bind it the one mounted last wins. For the other forms use a plain submit button: `$s->action('save-address')->label('Save')->color('primary')->submit()`.
+- **Refresh a table after a submit** with `Effects::make()->refreshTable('name')`, for example a quick-add form above a list.
+
+[Composing a page](/docs/authoring/pages#composing-a-page) has a full example with a form and two tables on one page.
+
+## Leaving with unsaved changes
+
+A form warns before the user navigates away from unsaved edits. Turn that off for one form with `->guardUnsaved(false)` — sensible for a small form inside a modal — or for the whole panel with `->unsavedGuard(false)` on the panel config.
+
+## Where to go next
+
+- A button that runs server code with the form's current, unsaved values declares `needs: ['form']`; those values are validated against the form's rules first. See [Actions](/docs/authoring/actions).
+- Forms in modals and slide-overs — `CreateAction`, `EditAction` — are also covered in [Actions](/docs/authoring/actions).
+- The full live-region contract is on [Live regions](/docs/extending/live-regions).
+- Every `FormBuilder` method is listed in the [actions reference](/docs/api/actions#formbuilder).

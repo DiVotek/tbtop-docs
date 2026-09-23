@@ -1,5 +1,306 @@
 ---
 title: "Fields"
+description: "The field kinds tbtop/admin ships, the API every field shares including column spans, and how relations, media and translatable values work."
 ---
 
-This page is being written.
+A field is a builder you get from the `S` instance passed to `view()`. `$s->text('title')` and `Text::make('title')` produce the same builder; the `$s->` form saves an import. The name you pass is the key the field reads from the form's `record()` and the key its submitted value arrives under in `$ctx->form`.
+
+Fields only describe the input. They never load or save a model on their own: you seed the form with `record()`, and you persist `$ctx->form` in `onSubmit` or in an action handler. [Forms](/docs/authoring/forms) covers that round trip; this page covers the fields themselves.
+
+The full method list for every kind is in the [Fields API reference](/docs/api/fields).
+
+## Field kinds by purpose
+
+tbtop/admin v0.5.1 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
+
+| Purpose | `S` factory | Value it submits |
+|---|---|---|
+| Short text | `text` | string |
+| Long text | `textarea` | string |
+| Rich text (Lexical editor) | `richtext` | editor state (JSON) |
+| Password | `password` | string |
+| One-time code | `otp` | string of digits |
+| URL slug, derived from another field | `slug` | string |
+| Number | `number` | number |
+| Number on a track | `slider` | number |
+| Date / date and time / time | `date`, `datetime`, `time` | string |
+| Date range | `daterange` | `from` / `to` pair |
+| On/off switch | `boolean` | boolean |
+| Single checkbox | `checkbox` | boolean |
+| One of a few options | `radio`, `togglebuttons` | string |
+| Several of a few options | `checkboxlist`, `togglebuttons()->multiple()` | array |
+| Dropdown or combobox | `select` | string, or array with `multiple()` |
+| Free-form list of strings | `tags` | array of strings |
+| Key/value pairs | `keyvalue` | object of strings |
+| Color | `colorpicker` | string |
+| Rows of sub-fields | `repeater` | array of row objects |
+| A related record | `relation` | the related key |
+| File on a disk | `upload` | stored path, or array of paths |
+| Item from the media library | `media` | media id, or array of ids |
+
+The 26th, `$s->inFilter('status')`, exists only for table filter bars. It is covered on [Tables](/docs/authoring/tables#filters).
+
+`boolean` renders a switch and `checkbox` a checkbox; both submit a boolean. `select` is one kind that changes behaviour with the methods you call: static `options()`, `searchable()`, a server-side `query()`, `creatable()` and `multiple()` all combine.
+
+## Common field API
+
+Every kind extends the base `Field` class, so the methods below work the same on a `text`, a `select` or a `repeater`. Kind-specific methods — `placeholder()`, `maxLength()`, `options()`, `multiple()` — come on top. The complete list with signatures is in [Every field](/docs/api/fields#every-field).
+
+| Group | Methods | What they do |
+|---|---|---|
+| Label and hints | `label()`, `helperText()`, `tooltip()` | Label above the input (defaults to the humanized name), a muted line under it, an info icon beside the label |
+| Value | `default()` | Initial value when `record()` has no key for the field |
+| Validation | `required()`, `rules()`, `nullable()`, `in()`, `notIn()`, `same()`, `different()`, `confirmed()`, `requiredWith()`, `requiredWithout()` | Laravel rules, collected on submit |
+| Conditional | `hiddenIf()`, `disabledIf()`, `requiredIf()`, `markAsRequired()` | React to other fields in the browser; `requiredIf()` also adds the server rule, `markAsRequired()` shows the asterisk without a rule |
+| Server switch | `when()` | Drop the field from the page for this request |
+| Layout | `columnSpan()`, `columnStart()` | Width and start column inside a grid |
+| Locales | `translatable()`, `rulesForLocale()` | Store one value per content locale |
+| Other | `copyable()`, `filterUsing()`, `meta()`, `set()` | Copy button, custom table-filter query, raw node meta and options |
+
+```php
+$s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
+    $s->text('sku')->label('SKU')
+        ->required()
+        ->maxLength(32)
+        ->alphaDash()
+        ->unique('products', 'sku')->ignore($product->id)
+        ->helperText('Letters, numbers and dashes.')
+        ->copyable(),
+
+    $s->number('stock')->label('Stock')
+        ->integer()->minValue(0)
+        ->default(0),
+
+    $s->select('status')->label('Status')->options([
+        ['value' => 'draft', 'label' => 'Draft'],
+        ['value' => 'scheduled', 'label' => 'Scheduled'],
+        ['value' => 'live', 'label' => 'Live'],
+    ]),
+
+    $s->datetime('publish_at')->label('Publish at')
+        ->hiddenIf('status', '!=', 'scheduled')
+        ->requiredIf('status', '=', 'scheduled'),
+
+    $s->textarea('notes')->label('Internal notes')
+        ->tooltip('Never shown to customers.')
+        ->columnSpan(['md' => 2]),
+])
+```
+
+**Labels and hints.** `label()` defaults to the humanized field name, and validation messages use it as the attribute name. `text`, `textarea`, `number` and `richtext` also take `placeholder()`.
+
+**Validation.** `required()` marks the field and adds the `required` rule; `rules()` appends any Laravel rules, as a pipe string or an array. Kinds add fluent helpers that fit them — `minLength()`, `maxLength()`, `regex()` and `alphaDash()` on text kinds, `minValue()`, `maxValue()`, `between()` and `integer()` on numbers, `unique()` and `exists()` where a value can live in a table — and each appends the same rule `rules()` would. A `boolean` has no `maxLength()`. `->regex()` is the safe way to add a pattern, and `ignore()` must follow `unique()`, since it rewrites the last `unique` rule and throws otherwise. How the rules run, and the ones that catch people out, are on [Forms](/docs/authoring/forms#validation).
+
+**Defaults.** `default()` fills the value only when the form's `record()` has no key for the field. An explicit key in `record()` always wins, even a `null`.
+
+**Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields), with the rest of the [dynamic form tools](/docs/authoring/forms#dynamic-forms).
+
+**Copy button.** `copyable()` is declared on every field, but at v0.5.1 only the `text` input renders the button. It copies the current value.
+
+**Escape hatches.** `set('key', $value)` writes a raw option into the field's node and `meta()` a raw node meta key; neither is validated, so a typo ships silently. Use them only for a client option that has no fluent method yet, such as an option read by your own [client component](/docs/extending/client-components).
+
+### Column spans
+
+Fields have no width of their own. They are laid out by the nearest grid around them: a `$s->grid()`, a `section` with `columns`, or a tab with `columns`. Directly inside a form or a `stack`, fields sit one per row and a span does nothing.
+
+`columnSpan()` sets how many of the grid's columns the field covers, and `columnStart()` the column it begins in, which leaves the columns before it empty. Both take an int from 1 to 8, which applies from the `md` breakpoint up, or a breakpoint map such as `['md' => 2, 'xl' => 1]`. Anything else throws when the page is built.
+
+```php
+$s->section(['title' => 'Address', 'columns' => ['sm' => 1, 'md' => 6]], [
+    $s->text('street')->label('Street')->columnSpan(['md' => 6]),
+    $s->text('postcode')->label('Postcode')->columnSpan(['md' => 2]),
+    $s->text('city')->label('City')->columnSpan(['md' => 4]),
+    $s->text('unit')->label('Unit')->columnSpan(['md' => 2])->columnStart(['md' => 5]),
+]),
+```
+
+How spans interact with a grid's breakpoints, and how layout blocks take the same placement, is on [Grid columns and columnSpan](/docs/authoring/layout#grid-columns-and-columnspan).
+
+## Options
+
+`radio`, `select`, `checkboxlist`, `togglebuttons` and `inFilter` take their options as a list of `['value' => ..., 'label' => ...]` arrays. An option can also carry `description` and `disabled`; only `radio` renders them today. `select` additionally reads `display` keys: `image` (a URL), `subtitle` and `html` (raw, unsanitized markup that replaces the other two).
+
+Option values are sent to the browser as strings. Seed defaults and `record()` values as strings too — `'plan' => 'pro'`, `'channel_ids' => ['1', '4']` — or the field will not show them as selected.
+
+## Relations
+
+### A belongs-to key: `relation`
+
+`relation` is a searchable picker over an Eloquent query. Its value is the related record's key, so it maps directly to a foreign-key column.
+
+```php
+use App\Models\Customer;
+
+$s->relation('customer_id')->label('Customer')
+    ->query(fn () => Customer::query()->orderBy('name'))
+    ->labelKey('name')
+    ->searchable()
+    ->searchLimit(20)
+    ->exists('customers', 'id')
+```
+
+The `query()` closure is the pool of records to pick from. The search endpoint applies the typed text as a `LIKE` on the `labelKey()` column (default `name`) and caps the result count at `searchLimit()`, which defaults to the `relation.search_cap` config value (50). When the label column is translatable, the search runs against the default content locale. Without `searchable()` the field only shows the label of the current value.
+
+Picking from the query does not validate anything. Add `exists()` (or `rules('exists:...')`) and any scoping check to the field; a request can send any key.
+
+### Cascading pickers: `dependsOn()`
+
+A `relation` or `select` can depend on another field. Its query closure then receives the parents' current values as `$deps`:
+
+```php
+$s->relation('country_id')->label('Country')
+    ->query(fn () => Country::query()->orderBy('name'))
+    ->searchable(),
+
+$s->relation('city_id')->label('City')
+    ->query(fn (array $deps) => City::query()
+        ->where('country_id', $deps['country_id'] ?? 0)
+        ->orderBy('name'))
+    ->searchable()
+    ->dependsOn('country_id')
+    ->whenParentEmpty('disabled'),
+```
+
+When a parent changes, the child refetches its options and clears its value. `keepValueOnParentChange()` keeps the value instead. While the parent is empty the child is disabled; `whenParentEmpty('empty')` keeps it enabled with an empty list. Inside a repeater row, `dependsOn('field')` points at a field in the same row, not at the root form.
+
+### Many-to-many: `select` with `multiple()`
+
+`relation` holds one key. For a many-to-many relation, use a `select` with `multiple()` and a server `query()`, then sync the pivot yourself:
+
+```php
+use App\Models\Tag;
+
+$s->select('tag_ids')->label('Tags')
+    ->multiple()
+    ->searchable()
+    ->query(fn (array $deps, string $search): array => Tag::query()
+        ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"))
+        ->orderBy('name')
+        ->limit(20)
+        ->pluck('name', 'id')
+        ->all())
+    ->resolveUsing(fn (string $value): ?string => Tag::query()->whereKey($value)->value('name'))
+    ->rules('max:10|exists:tags,id')
+```
+
+Unlike `relation`, a `select` query closure receives the raw search text and is responsible for filtering and limiting — nothing is applied on its behalf. It may return a list of `value`/`label` rows or a `value => label` map. `resolveUsing()` turns a stored value that the current result set does not contain back into a label.
+
+For a multiple select, the rules are split for you: `array`, `max`, `min`, `required` and other array-level rules apply to `tag_ids`, and the rest (`exists:tags,id` here) apply to each element as `tag_ids.*`.
+
+Persist it in the submit handler, and seed `record()` with string ids:
+
+```php
+->record([
+    'title' => $post->title,
+    'tag_ids' => $post->tags()->pluck('tags.id')->map(fn ($id) => (string) $id)->all(),
+])
+->onSubmit(function (ActionCtx $ctx) use ($post): Effects {
+    $post->update(['title' => $ctx->form['title']]);
+    $post->tags()->sync($ctx->form['tag_ids'] ?? []);
+
+    return Effects::make()->notify('Saved');
+})
+```
+
+### Creating the option inline: `creatable()`
+
+`creatable($fields, $using)` adds a "Create" row to a select's dropdown. It opens a small form built from `$fields`, and on submit runs `$using` on the server with the validated values. The closure must return the new option as `['value' => ..., 'label' => ...]`:
+
+```php
+$s->select('supplier_id')->label('Supplier')
+    ->searchable()
+    ->options($supplierOptions)
+    ->creatable(
+        fields: [$s->text('name')->label('Name')->required()],
+        using: function (array $validated): array {
+            $supplier = Supplier::create(['name' => $validated['name']]);
+
+            return ['value' => (string) $supplier->id, 'label' => $supplier->name];
+        },
+    )
+```
+
+## Files and media
+
+There are two file fields, and they store different things.
+
+**`upload`** writes the file to a Laravel disk and submits the stored path. Storage is configured on the field:
+
+```php
+$s->upload('manual')->label('Manual (PDF)')
+    ->accept('application/pdf')
+    ->disk('local')->directory('manuals')->visibility('private')
+    ->maxSize(10 * 1024 * 1024),
+
+$s->upload('photos')->label('Photos')
+    ->accept('image/*')
+    ->multiple()->maxFiles(8)->reorderable()
+    ->convertTo('webp')->quality(80),
+```
+
+The file is uploaded to a JSON endpoint as soon as it is picked, before the form submits. What reaches `$ctx->form['manual']` is the path string, such as `manuals/abc.pdf`, or an array of paths with `multiple()`. Defaults are the `public` disk, the `uploads` directory, public visibility and a 5 MiB limit; `maxSize()` is in bytes. A private file is shown back in the form through a short-lived signed URL. `saveUsing()` replaces the storage step entirely, which also skips the built-in SVG sanitizing and image conversion.
+
+**`media`** picks from the panel's shared media library and submits the id of a row in the package's `tbtop_media` table (model `Tbtop\Admin\Media\Models\Media`). The migrations for that table ship with the package and run with your normal `php artisan migrate`.
+
+```php
+$s->media('cover_media_id')->label('Cover image')
+    ->accept(['image/*'])
+    ->variant('preview')
+    ->rules('nullable|integer'),
+
+$s->media('gallery_ids')->label('Gallery')
+    ->accept(['image/*'])
+    ->multiple()
+    ->reorderable()
+    ->rules('nullable|array'),
+```
+
+With `multiple()` the value is an array of ids in the order shown, so the first id can serve as the cover. `variant('preview')` replaces the default Choose button with a large clickable preview; it applies only to single selection. Library-wide settings — disk, accepted types, size limit, image conversions — live under the `media` key of `config/tbtop-admin.php`, not on the field. To render a picked item, load the `Media` row and build the URL from its `disk` and `path`.
+
+Pick `upload` when the file belongs to one record and nothing else. Pick `media` when editors should reuse files across records.
+
+## Translatable fields
+
+A translatable field stores one value per content locale. The locales are global, set in `config/tbtop-admin.php`:
+
+```php
+'content_locales' => ['en', 'uk'],
+'default_content_locale' => 'en',
+```
+
+These are the locales of your data, separate from the panel's interface locales. Mark a field with `translatable()`:
+
+```php
+$s->text('name')->label('Name')
+    ->translatable()
+    ->required()->maxLength(200)
+    ->rulesForLocale('uk', 'nullable|max:200'),
+
+$s->richtext('description')->label('Description')->translatable(),
+```
+
+**The value is a locale map.** The form receives and submits `['en' => '...', 'uk' => '...']`, with `null` for an empty locale. Store it in a JSON column with an `array` cast, and `$product->toArray()` feeds `record()` directly. A plain string in `record()` for a translatable field — for example from rows written before the field became translatable — is expanded to a map with the string under the default locale. If your model flattens translations in `toArray()`, pass the full map to `record()` yourself.
+
+**The form gets one locale switcher.** A form with at least one translatable field shows a locale tab bar at the top, with an error count per locale; with a single content locale it is hidden. Switching tabs changes every translatable field in that form at once.
+
+**Rules apply to the default locale.** `rules()` and the fluent helpers validate the default content locale only, as `name.en`. Every other locale gets `nullable` unless you set its rules with `rulesForLocale()`, which replaces the rules for that locale rather than adding to them.
+
+**Repeaters cascade.** `translatable()` on a repeater makes each sub-field translatable; the repeater's own value stays a plain list of rows.
+
+**Tables read the default locale.** In a table, `Column::make('name')->translatable()` shows the default-locale value, falling back to the first non-empty one. See [Tables](/docs/authoring/tables#columns).
+
+<Callout type="warn">
+A `slug` that is not itself translatable cannot derive from a translatable source by its bare name: `fromField('title')` resolves to the whole locale map and produces nothing. Point it at one locale instead, for example `fromField('title.en')`.
+</Callout>
+
+## Gotchas
+
+- **Nothing is saved for you.** `upload` stores the file, but writing the path, key or id to your model is your submit handler's job. The same holds for pivot tables, media ids and translations.
+- **Hidden is not absent.** Use `when()`, or `requiredIf()` in place of `required()`, for fields that only matter in some states. See [What hiding does not do](/docs/authoring/forms#what-hiding-does-not-do).
+- **Repeater bounds are client-side.** `minItems()` and `maxItems()` only disable the add and remove buttons. Enforce the count with `rules('array|max:10')`.
+- **No money input.** For an amount stored in cents, use `number()->step('0.01')->prefix('$')` and convert in the submit handler. Only table columns and display values understand cents.
+- **Pass builders, not nodes.** Put the field builder itself in a form's children. A field already turned into a node with `->toNode()` throws, because its rules can no longer be collected.
+
+For a field kind the package does not ship, register your own PHP field class and client component. See [Client components](/docs/extending/client-components).
+
+See it in the demo: the [new post form](https://demo.tbtop.dev/admin/posts/new) has a translatable title and body, a slug derived from the English title, a media picker, a creatable select, a repeater and a custom rating field.
