@@ -17,6 +17,13 @@ export const gitConfig = {
  */
 export const PINNED_TAG = "v0.5.1";
 
+// Own Umami site, not tbtop.dev's; `domains` keeps dev and previews out of stats.
+export const umami = {
+	src: "https://analytics.divotek.com/script.js",
+	websiteId: "a3681f05-47f3-4b4d-9471-e598f25a8350",
+	domains: "docs.tbtop.dev",
+};
+
 const getContentUrl = createGetUrl(docsContentRoute);
 
 export function getPageMarkdownUrl(page: { slugs: string[]; locale?: string }) {
