@@ -1,0 +1,72 @@
+---
+title: "Install"
+description: "PHP, Laravel and Tailwind version requirements, the Composer and npm commands, and the artisan install step that follows."
+---
+
+Tabletop installs into a Laravel application you already have. Two packages release in lockstep — the PHP DSL and the React client that renders it — so they go in together, followed by one Artisan command that publishes the three files the package cannot own for you.
+
+## Requirements
+
+The package is checked against these versions and declares them in its own composer constraints:
+
+- PHP 8.4
+- Laravel 11, 12 or 13
+- React 19 over Inertia
+- Tailwind v4 on the host — the client ships a Tailwind source, not built CSS
+
+## Install the package
+
+The Composer and npm packages share a version and are installed together:
+
+```
+composer require tbtop/admin
+npm install @tbtop/inertia-admin
+```
+
+The service provider and the Admin facade are registered automatically; there is no provider to add by hand. The package also ships its own migrations for the media library and runs them itself, so no separate migrate step is needed.
+
+## Publish the config
+
+The config file is published on its own tag:
+
+```
+php artisan vendor:publish --tag="tbtop-admin-config"
+```
+
+That writes `config/tbtop-admin.php`, whose `panels` key is the list of panel classes. A panel that is not listed there has no routes.
+
+## Publish the wiring
+
+One command publishes the host files the package deliberately does not own:
+
+```
+php artisan admin:install
+```
+
+It writes three files — `resources/views/admin.blade.php` (the root Blade view), `resources/js/admin.tsx` (the admin JS entry) and `resources/css/admin.css` (the stylesheet). Existing files are left untouched and reported; pass `--force` to overwrite them.
+
+The command then prints the steps it will not take for you, because rewriting a host build config from a package is how installers silently break projects:
+
+- Add resources/js/admin.tsx to the Vite input list.
+- Point the panel at the published root view with ->rootView('admin').
+- Install Tailwind v4 and add its Vite plugin.
+- Run npm run build.
+
+## Open the panel
+
+Register your panel class in the panels key of the config, build the assets, and the panel answers under its own prefix.
+
+### Change the prefix
+
+The prefix is not a config key — it belongs to the panel, set in its configure() method:
+
+```
+->prefix('admin')
+```
+
+Left unset, the prefix falls back to the panel id, which also feeds the route-name namespace tbtop.\{id\}.*. Changing the id on a panel that is already live renames every one of its routes.
+
+### Next steps
+
+- [Register a panel](/docs/getting-started/panel) — the class that owns the prefix, the guard and the pages.
+- [Write your first page](/docs/getting-started/first-page) — a page is a PHP class that serializes to a typed contract.

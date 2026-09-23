@@ -1,12 +1,153 @@
-@import 'tailwindcss';
-@import 'fumadocs-ui/css/neutral.css';
-@import 'fumadocs-ui/css/preset.css';
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/*
+ * Tabletop brand, ported from tbtop.dev's resources/css/app.css tokens.
+ * Light-touch: only the fd-* variables Fumadocs UI itself reads, plus the
+ * Tailwind font tokens — no component overrides.
+ */
+@theme static {
+	--font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+	/*
+	 * Landing-page tokens, ported from tbtop.dev's resources/css/app.css —
+	 * only the ones the ported hero/brand components use. Accent colours
+	 * (amber/acid/blue/runtime/ok-soft) are invariant across themes, same as
+	 * the source; surface/text/border tiers are themed via `--site-*` below.
+	 */
+	--color-amber: #f2a91f;
+	--color-acid: #c9ff45;
+	--color-blue: #1647ff;
+	--color-runtime: #66cddd;
+	--color-ok-soft: #79d6a9;
+	--color-bench-deep: #0b0f12;
+	--color-chrome: #171c20;
+	--color-chrome-sunken: #0b0f12;
+	--color-chrome-pill: color-mix(in srgb, white 6%, transparent);
+	--color-chrome-text: color-mix(in srgb, white 55%, transparent);
+	--color-chrome-dot: color-mix(in srgb, white 15%, transparent);
+	--color-chrome-border: color-mix(in srgb, white 14%, transparent);
+	--color-chrome-hairline: color-mix(in srgb, white 10%, transparent);
+	--color-on-accent: #11120f;
+
+	--color-surface: var(--site-surface);
+	--color-surface-raised: var(--site-surface-raised);
+	--color-text: var(--site-text);
+	--color-text-secondary: var(--site-text-secondary);
+	--color-text-tertiary: var(--site-text-tertiary);
+	--color-text-muted: var(--site-text-muted);
+	--color-border-hairline: var(--site-border-hairline);
+	--color-border-default: var(--site-border-default);
+	--color-border-strong: var(--site-border-strong);
+	--color-border-emphasis: var(--site-border-emphasis);
+	--color-accent-strong: var(--site-accent-strong);
+
+	--animate-rise-in: rise-in 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+	--animate-soft-fade: soft-fade 0.9s cubic-bezier(0.25, 0.6, 0.3, 1) both;
+
+	@keyframes rise-in {
+		from {
+			opacity: 0;
+			transform: translateY(14px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@keyframes soft-fade {
+		from {
+			opacity: 0;
+			filter: blur(3px);
+			transform: translateY(3px);
+		}
+		to {
+			opacity: 1;
+			filter: blur(0);
+			transform: translateY(0);
+		}
+	}
+}
+
+/*
+ * Site theme tiers (surface/text/border), ported verbatim from tbtop.dev for
+ * the landing hero and brand mark. Accent colours above are NOT themed here,
+ * matching the source's contract.
+ */
+:root {
+	--site-surface: #f3f1eb;
+	--site-surface-raised: #f8f9f7;
+	--site-text: #11120f;
+	--site-text-secondary: color-mix(in srgb, #11120f 72%, transparent);
+	--site-text-tertiary: color-mix(in srgb, #11120f 64%, transparent);
+	--site-text-muted: color-mix(in srgb, #11120f 60%, transparent);
+	--site-border-hairline: #dfe1dc;
+	--site-border-default: color-mix(in srgb, #11120f 12%, transparent);
+	--site-border-strong: color-mix(in srgb, #11120f 25%, transparent);
+	--site-border-emphasis: color-mix(in srgb, #11120f 35%, transparent);
+	--site-accent-strong: #1647ff;
+}
+
+.dark {
+	--site-surface: #0c1115;
+	--site-surface-raised: #131a20;
+	--site-text: #ffffff;
+	--site-text-secondary: color-mix(in srgb, white 70%, transparent);
+	--site-text-tertiary: color-mix(in srgb, white 55%, transparent);
+	--site-text-muted: color-mix(in srgb, white 45%, transparent);
+	--site-border-hairline: color-mix(in srgb, white 10%, transparent);
+	--site-border-default: color-mix(in srgb, white 14%, transparent);
+	--site-border-strong: color-mix(in srgb, white 24%, transparent);
+	--site-border-emphasis: color-mix(in srgb, white 32%, transparent);
+	--site-accent-strong: #f2a91f;
+}
+
+:root {
+	--color-fd-background: #f3f1eb;
+	--color-fd-foreground: #11120f;
+	--color-fd-muted: #e9e7e1;
+	--color-fd-muted-foreground: #5c5e58;
+	--color-fd-popover: #ffffff;
+	--color-fd-popover-foreground: #11120f;
+	--color-fd-card: #f8f9f7;
+	--color-fd-card-foreground: #11120f;
+	--color-fd-border: #d7d5cf;
+	--color-fd-primary: #1647ff;
+	--color-fd-primary-foreground: #ffffff;
+	--color-fd-secondary: #e9e7e1;
+	--color-fd-secondary-foreground: #11120f;
+	--color-fd-accent: #e9e7e1;
+	--color-fd-accent-foreground: #11120f;
+	--color-fd-ring: #66cddd;
+}
+
+.dark {
+	--color-fd-background: #0c1115;
+	--color-fd-foreground: #ffffff;
+	--color-fd-muted: #131a20;
+	--color-fd-muted-foreground: hsla(0, 0%, 70%, 0.8);
+	--color-fd-popover: #171c20;
+	--color-fd-popover-foreground: #ffffff;
+	--color-fd-card: #131a20;
+	--color-fd-card-foreground: #ffffff;
+	--color-fd-border: hsla(0, 0%, 40%, 20%);
+	--color-fd-primary: #f2a91f;
+	--color-fd-primary-foreground: #11120f;
+	--color-fd-secondary: #131a20;
+	--color-fd-secondary-foreground: #ffffff;
+	--color-fd-accent: hsla(0, 0%, 40.9%, 30%);
+	--color-fd-accent-foreground: #ffffff;
+	--color-fd-ring: #66cddd;
+}
 
 html {
-  scrollbar-gutter: stable;
+	scrollbar-gutter: stable;
 }
 
 html > body[data-scroll-locked] {
-  margin-right: 0px !important;
-  --removed-body-scroll-bar-size: 0px !important;
+	margin-right: 0px !important;
+	--removed-body-scroll-bar-size: 0px !important;
 }
