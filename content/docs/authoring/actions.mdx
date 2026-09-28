@@ -388,6 +388,8 @@ load the record. `when(false)` also removes an action, with the same 404.
   the form is invalid. Only declared keys reach the closure.
 - `custom('handlerName', $params)` calls a client function registered with
   `defineCustomAction`. See [Client components](/docs/extending/client-components).
+- `mcp(false)` hides the action from the panel's [MCP endpoint](/docs/integrations/mcp):
+  an agent cannot list or run it. The browser UI does not change.
 - `keybinding('mod+s')`, `badge()`, `color()`, `size()`, `outlined()` and `link()`
   change how the trigger looks and behaves.
 
