@@ -1,0 +1,213 @@
+---
+title: "AI agents (MCP)"
+description: "Expose a panel to an AI agent such as Claude over the Model Context Protocol: three tools that find, read and run what the signed-in user can, with the same gates and validation as the UI."
+---
+
+<Callout type="info" title="New in v0.6.0">
+The MCP server ships in tbtop/admin v0.6.0 and is not in v0.5.x. The rest of these docs describe v0.5.1.
+</Callout>
+
+A panel can serve an [MCP](https://modelcontextprotocol.io) endpoint next to its pages. An agent connected to it, such as Claude Desktop or Claude Code, finds the panel's pages, reads their tables and runs their actions and forms, signed in as a user of your app. It gets exactly that user's rights: nothing the user cannot do in the browser, and nothing less.
+
+The endpoint is opt-in and off by default. You pick the route's authentication; the package brings the tools.
+
+## How it works
+
+The endpoint has three tools. An agent learns what it can do with `search`, then uses `query` to read and `execute` to act.
+
+| Tool | What it does | Annotation |
+|---|---|---|
+| `search` | Lists the pages the user may open, with the executables (actions and forms) and tables of each page that takes no route params. With a page and its params, describes one record page. | read-only |
+| `query` | Reads rows from a table, with its pagination, filters, filter tabs, sorting and search. | read-only |
+| `execute` | Runs an action or a form by id, with form values, a row or a selection of row keys. | destructive |
+
+`execute` is always marked destructive. Actions are code you write, so the package cannot tell a delete from an edit and does not guess. The MCP client reads the annotation and decides what to confirm with the user before it runs the call.
+
+A call does not go through a separate API. `query` and `execute` run the panel's own table, action and form controllers in-process, with a request bound to the page's route. So everything those controllers check applies over MCP exactly as it does in the browser:
+
+- the page's gate, `Page::can()`,
+- `->authorize()` on actions and `when()` conditions: an action the user cannot see is one the agent cannot run,
+- the Laravel validation rules on fields,
+- any check your handler does itself, such as a per-row policy check after it loads the record.
+
+Invalid input comes back as validation errors keyed by field, and the handler does not run.
+
+**Panel and page middleware do not run.** The MCP route has its own middleware stack, which you set. That is the one thing that differs from the browser, and [the next section](#enable-it) shows what it means for your access checks.
+
+## Enable it
+
+Install `laravel/mcp`. tbtop/admin suggests it but does not require it:
+
+```bash
+composer require laravel/mcp
+```
+
+Then call `mcp()` in the panel's `configure()`, with the middleware the MCP route runs:
+
+```php title="app/Admin/AdminPanel.php"
+public function configure(PanelConfig $panel): PanelConfig
+{
+    return $panel
+        ->id('admin')
+        ->prefix('admin')
+        // ...
+        ->mcp(['auth:sanctum', 'abilities:tbtop-mcp', 'can:access-admin']);
+}
+```
+
+The endpoint is `POST {prefix}/mcp`, so `/admin/mcp` here, speaking MCP's streamable HTTP transport. `GET` on it answers 405. The route is named `tbtop.{id}.mcp`. Pass `path:` to serve it elsewhere under the prefix:
+
+```php
+->mcp(['auth:sanctum'], path: 'agent') // POST /admin/agent
+```
+
+Enabling it without `laravel/mcp` installed throws when the routes are registered. So does a page whose path is the MCP path, or whose slug is `mcp`.
+
+### The middleware list is the whole stack
+
+The middleware you pass to `mcp()` **replaces** the panel's middleware for this route; it does not add to it. The route runs the package's panel binding, then exactly your list, then the admin locale:
+
+```
+SetCurrentPanel → ...your mcp() middleware → SetAdminLocale
+```
+
+The panel's usual `web` + `auth:{guard}` stack would not work here anyway. It is session-based: it rejects a bearer token with a 401, and a POST from something that is not a browser fails CSRF with a 419. So:
+
+- **Use stateless token auth.** [Laravel Sanctum](https://laravel.com/docs/sanctum) API tokens are the simple choice; Passport works too. `mcp()` has no default, and an empty list throws, because it would serve the panel without authentication.
+- **Repeat the panel's access checks.** If the panel's middleware checks a role, or anything else that decides who may use the admin, put the same check in the `mcp()` list. Panel middleware does not run for MCP calls. In the example above, `can:access-admin` repeats the panel-wide gate from [Access control](/docs/getting-started/panel#access-control).
+- **Put a page's own restriction in `Page::can()`, not `Page::middleware()`.** Gates run inside the controllers, so they hold over MCP. Page middleware is for transport, such as making a page public, and does not run for MCP calls.
+
+### Tokens with Sanctum
+
+A token is issued by your app; the package does not issue tokens. With Sanctum, give the admin token its own ability, so that the user's other tokens, such as a mobile app's, cannot reach the admin:
+
+```php
+$token = $user->createToken('Claude', ['tbtop-mcp'])->plainTextToken;
+```
+
+The `abilities` middleware in the stack above is Sanctum's `CheckAbilities`. Register its alias in `bootstrap/app.php`:
+
+```php title="bootstrap/app.php"
+use Laravel\Sanctum\Http\Middleware\CheckAbilities;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->alias([
+        'abilities' => CheckAbilities::class,
+    ]);
+})
+```
+
+The ability check only holds for token requests. `auth:sanctum` first tries Sanctum's session guard (`sanctum.guard`, `web` by default), and a user signed in through a session counts as holding every ability. The stack above starts no session, so only a bearer token can authenticate on this route. Keep it that way: do not add `web`, `StartSession` or Sanctum's `EnsureFrontendRequestsAreStateful` to the `mcp()` list, or a signed-in browser session reaches the endpoint without the `tbtop-mcp` ability.
+
+The user model needs Sanctum's `HasApiTokens` trait. Where the user gets the token, such as a profile page that creates and revokes it, is up to your app.
+
+## Connect an agent
+
+Point the MCP client at the endpoint with the token as a bearer header. With Claude Code:
+
+```bash
+claude mcp add --transport http tbtop https://example.com/admin/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+Other clients take the same two things: the URL of the endpoint and an `Authorization: Bearer <token>` header. The server introduces itself as "Tabletop Admin" and tells the agent to start with `search`.
+
+## What the agent sees
+
+### Pages and executables
+
+`search` with no arguments lists every page the user may open. A page the user fails the gate of is not listed at all. For a page without route params, the listing includes what it offers:
+
+- **executables**: the page's server actions and its forms with an `onSubmit` handler. Both are run with `execute`, by an id of the form `{page-slug}:{name}`, such as `posts-page:publish`.
+- **tables**: each table with a query, with its visible columns, searchable columns, filters and the shape of each filter's value, filter tabs, sortable columns and pagination options.
+- **excluded**: what the page has that the agent cannot use, each with a reason.
+
+A page with route params, such as `posts/{post}`, is listed with its param names only. The agent calls `search` again with the page slug and `params` (as strings, `{"post": "12"}`) to build that record's page and see its executables and tables.
+
+Each executable states what it `needs`: `form` values, a `row` from `query`, or a `selection` of row keys for a bulk action. It also states the table it belongs to and its confirmation title, if it has one. A form is described field by field: kind, label, the Laravel validation rules as strings, and the options of a select, radio and similar fields (`dynamic` when they are fetched by search). A form bound to a record also carries its current `values`, the data the UI would prefill, except passwords.
+
+A page as `search` lists it, trimmed:
+
+```json
+{
+  "page": "posts-page",
+  "title": "Posts",
+  "executables": [
+    { "id": "posts-page:create", "kind": "form", "form": "create",
+      "fields": [{ "name": "title", "kind": "text", "label": "Title", "rules": ["required", "max:120"] }] },
+    { "id": "posts-page:publish", "kind": "action", "label": "Publish", "needs": ["row"], "table": "posts" }
+  ],
+  "tables": [
+    { "table": "posts", "columns": [{ "name": "title", "label": "Title" }],
+      "pagination": { "perPage": 25, "options": [10, 25, 50, 100] } }
+  ],
+  "excluded": [{ "id": "posts-page:preview", "reason": "client-only custom action: it runs in the browser" }]
+}
+```
+
+The rules are listed, not converted into a JSON Schema. The server validates every call, and the errors it returns name the field and the rule, so the agent corrects its input the way a person would.
+
+### Reading rows
+
+`query` takes the page slug, the table name and the page's `params`, plus any of `pageNumber`, `perPage`, `search`, `columnSearch`, `filters`, `tab`, `sort` and `dir`. It returns what the admin table receives: each row's visible columns formatted as they display, the record's other attributes, and its key (`id` for Eloquent models), plus `total`, `page` and `perPage`:
+
+```json
+{ "data": [{ "id": 12, "title": "Hello world", "status": "Draft" }], "total": 1, "page": 1, "perPage": 25 }
+```
+
+A row goes back to `execute` unchanged as `row` for a row action, and the handler receives it as `$ctx->row`, exactly as from the browser. Row keys go to `execute` as `selection` for a bulk action.
+
+Rows are formatted for display. To edit a record, the agent builds the change from the form's `values` that `search` returns, not from a row.
+
+### Running actions and forms
+
+`execute` takes the executable's id, the page's `params` and what it needs. It returns `ok` and the effects the UI would show, such as a notification or a table refresh: `{"ok": true, "effects": [{"kind": "notify", "message": "Published", "level": "success"}]}`. A form handler that redirects returns the `redirect` URL, and, when the URL is a page of this panel, the `page` and `params` it opens, so the agent can `search` that page next. A `redirect` effect from an action carries the same `page` and `params`.
+
+A field the agent leaves out of `form` is absent from the handler's input. For an edit, whether that clears the column depends on your handler; the tool description tells the agent to resend the `values` of the fields it keeps.
+
+### Errors
+
+Every tool error is JSON with the same shape:
+
+```json
+{ "message": "Validation failed; nothing was run.", "errors": { "title": ["The title field is required."] } }
+```
+
+`errors` is present for validation failures. Other errors carry only a `message`: a denied page gate (`Forbidden: …`), a record that does not exist, a page called without the params it needs, an unknown page or executable, or one that is not executable for this user, such as an action whose `->authorize()` fails or that `->mcp(false)` hides. A param that contains `/`, `?` or `#` is refused, so a value cannot steer a call onto another page's route.
+
+## Curate what the agent sees
+
+By default the agent can use everything the user can. Hide what it should not, or does not need:
+
+```php
+// An action: not listed by search, refused by execute
+$s->action('cancel')->handle(fn () => Effects::make()->closeModal())->mcp(false);
+```
+
+```php
+// A page: its actions, forms and tables
+class LoginPage extends Page
+{
+    public static function mcp(): bool
+    {
+        return false;
+    }
+}
+```
+
+Both are server-only. The browser UI does not change, and nothing about them reaches the wire.
+
+Every server action is an executable, including interface plumbing such as a modal's Cancel or Close handler, or a quick-create form next to the full create page. Mark those `->mcp(false)`: the agent chooses from the list, and every entry it does not need costs it context. Public pages, such as a login page or a 2FA challenge, stay listed until you hide them.
+
+Some things are excluded automatically, and `search` lists them under `excluded` with the reason:
+
+- `custom` actions, which run only in the browser,
+- `upload`, `media` and `richtext` fields, whose values an agent cannot produce. Such a field is listed under the form's `excludedFields` and is never part of the input.
+- A form, or an action that submits one, whose every field is excluded.
+
+## Limits
+
+- The package ships no token auth and no token screen. The host issues and revokes tokens.
+- Page and panel middleware do not run for MCP calls. An access rule that lives only there does not apply: move it to `Page::can()` or repeat it in `mcp()`.
+- Files and rich text cannot be set over MCP.
+- `execute` is always annotated destructive, even for a harmless action.
