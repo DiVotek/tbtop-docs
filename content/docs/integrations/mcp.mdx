@@ -97,6 +97,8 @@ use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 })
 ```
 
+The ability check only holds for token requests. `auth:sanctum` first tries Sanctum's session guard (`sanctum.guard`, `web` by default), and a user signed in through a session counts as holding every ability. The stack above starts no session, so only a bearer token can authenticate on this route. Keep it that way: do not add `web`, `StartSession` or Sanctum's `EnsureFrontendRequestsAreStateful` to the `mcp()` list, or a signed-in browser session reaches the endpoint without the `tbtop-mcp` ability.
+
 The user model needs Sanctum's `HasApiTokens` trait. Where the user gets the token, such as a profile page that creates and revokes it, is up to your app.
 
 ## Connect an agent
