@@ -15,15 +15,13 @@ import NotFound from "./routes/not-found";
 
 export const links: Route.LinksFunction = () => [
 	{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
-	{ rel: "preconnect", href: "https://fonts.googleapis.com" },
+	// Body copy resolves to Figtree 500, the lightest face shipped; preloading it avoids a fallback-font flash.
 	{
-		rel: "preconnect",
-		href: "https://fonts.gstatic.com",
+		rel: "preload",
+		href: "/fonts/figtree-500-normal.woff2",
+		as: "font",
+		type: "font/woff2",
 		crossOrigin: "anonymous",
-	},
-	{
-		rel: "stylesheet",
-		href: "https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap",
 	},
 ];
 
