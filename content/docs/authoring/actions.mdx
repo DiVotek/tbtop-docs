@@ -4,7 +4,7 @@ description: "Buttons that navigate, submit or run a server closure — as page,
 ---
 
 An action is a button declared in PHP with `$s->action('name')`. It does one of five
-things, called its **spec**: `visit()` a URL, `submit()` a form, run a server closure
+things, called its **spec**: navigate to a `url()`, `submit()` a form, run a server closure
 with `handle()`, open a `modal()`, or call a client handler with `custom()`. Every
 action has exactly one spec; setting a second throws a `LogicException`.
 
@@ -58,15 +58,40 @@ $s->action('archive')
 `$ctx->row` and `$ctx->selection` come from the browser. Treat them as ids to look up,
 never as trusted record data. Load the model again and check its state in the handler.
 
+## Links
+
+`url($href)` is the spec for an action that only navigates. A same-origin path is an
+Inertia visit; an off-origin URL, `mailto:` or `tel:` is a normal browser navigation.
+`openUrlInNewTab()` opens the target in a new tab instead. Call order does not matter, and
+it has no effect without `url()`.
+
+```php
+$s->action('docs')->label('Read the docs')
+    ->url('https://docs.example.com')->openUrlInNewTab(),
+```
+
+On an action, `url()` is a spec like the others: a second `url()`, or `url()` next to
+`handle()`, `submit()`, `modal()` or `custom()`, throws. It is not `link()`, which only
+styles the trigger as a text link.
+
+The same pair, `url()` plus `openUrlInNewTab()`, is how every link-shaped builder is
+written: nav items, palette commands, notification actions, stat cards, sections and list
+rows.
+
+<Callout type="warn" title="Deprecated in v0.5.6">
+  `visit($href, newTab: true)`, `newTab()` and `openInNewTab()` still work but raise an
+  `E_USER_DEPRECATED` and are removed in 1.0. Write `url($href)->openUrlInNewTab()` instead.
+</Callout>
+
 ## Row and bulk actions
 
 Row actions receive the row they were clicked on. A plain link needs no server trip:
-`visit()` fills `{row.<column>}` placeholders from the row, URL-encoded.
+`url()` fills `{row.<column>}` placeholders from the row, URL-encoded.
 
 ```php
 $s->table('orders')
     ->rowActions([
-        $s->action('open')->label('Open')->visit('/admin/orders/{row.id}'),
+        $s->action('open')->label('Open')->url('/admin/orders/{row.id}'),
         $s->action('ship')->label('Mark shipped')
             ->hiddenIf('status', '!=', 'paid')
             ->handle(fn (ActionCtx $ctx): Effects => Effects::make()->notify('Shipped')->refreshTable(), needs: ['row']),
@@ -107,7 +132,7 @@ dialog closes after the handler runs, unless the response carries `haltModal()`,
 case it stays open and shows the message.
 
 The client applies `confirm()` only to `handle()`, `submit()` and `custom()`. On a
-`visit()` or `modal()` action it is dropped without an error, and the action runs
+`url()` or `modal()` action it is dropped without an error, and the action runs
 straight away. To confirm before navigating, use `handle()` and return `redirect()`. For
 a modal, put the warning in the modal's description.
 
@@ -370,7 +395,7 @@ load the record. `when(false)` also removes an action, with the same 404.
 
 - `modal()` and `handle()` on the same builder are two specs and throw. The server work
   belongs to an inner action inside the modal body.
-- `confirm()` on a `visit()` or `modal()` action is dropped without an error, and the
+- `confirm()` on a `url()` or `modal()` action is dropped without an error, and the
   action runs with no dialog.
 - `hiddenIf()` only hides the button in the browser. The endpoint still accepts the call,
   so the handler must re-check the record's state.
@@ -386,4 +411,4 @@ that submit into their own `onSubmit` are covered in [Forms](/docs/authoring/for
 Content that updates without a page reload is covered in
 [Live regions](/docs/extending/live-regions).
 
-See it in the demo: the [posts table](https://demo.tbtop.dev/admin/posts) has a header create action in a slide-over, a server-side edit redirect, the View, Edit, Replicate and Delete presets on each row, and a bulk delete. The [media list](https://demo.tbtop.dev/admin/media) uses a `{row.id}` visit template for its row links.
+See it in the demo: the [posts table](https://demo.tbtop.dev/admin/posts) has a header create action in a slide-over, a server-side edit redirect, the View, Edit, Replicate and Delete presets on each row, and a bulk delete. The [media list](https://demo.tbtop.dev/admin/media) uses a `{row.id}` URL template for its row links.

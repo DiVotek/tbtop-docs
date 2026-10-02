@@ -24,11 +24,11 @@ The host app does not need to be an Inertia app already, but it must be able to 
 Install both halves at the same version:
 
 ```bash
-composer require tbtop/admin:^0.5.1
-npm install --save-exact @tbtop/inertia-admin@0.5.1
+composer require tbtop/admin:^0.5.6
+npm install --save-exact @tbtop/inertia-admin@0.5.6
 ```
 
-The PHP package and the npm package describe one wire format between them, so keep their versions identical. `--save-exact` writes `"0.5.1"` to `package.json` instead of `"^0.5.1"`. The Composer constraint `^0.5.1` allows later 0.5.x patches, so check `composer.lock` and `package-lock.json` agree after every update, or pin Composer exactly with `tbtop/admin:0.5.1`. When you upgrade one, upgrade the other in the same change.
+The PHP package and the npm package describe one wire format between them, so keep their versions identical. `--save-exact` writes `"0.5.6"` to `package.json` instead of `"^0.5.6"`. The Composer constraint `^0.5.6` allows later 0.5.x patches, so check `composer.lock` and `package-lock.json` agree after every update, or pin Composer exactly with `tbtop/admin:0.5.6`. When you upgrade one, upgrade the other in the same change.
 
 The service provider (`Tbtop\Admin\AdminServiceProvider`) is auto-discovered. You do not register it by hand.
 
@@ -160,7 +160,7 @@ resolve: async (name) => {
 
 - **Only one Inertia app per page load.** The admin bundle resolves only `admin/*` components. An Inertia visit from an admin page to a page rendered by your main `app.tsx`, or the other way round, fails in the browser. Keep screens that admin users reach inside the panel, including the login page. Redirects that leave the panel should be full page loads.
 - **Classes written in PHP need an `@source` line.** If your pages live outside `app/`, or a package of yours writes admin classes, add one `@source` line per directory to `resources/css/admin.css`. Without it, those classes compile to nothing.
-- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.5.1 ships no facade class behind it. Everything is configured through the panel class and page classes.
+- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.5.6 ships no facade class behind it. Everything is configured through the panel class and page classes.
 
 ## Next steps
 

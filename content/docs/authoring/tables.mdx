@@ -37,8 +37,8 @@ class ProductsIndexPage extends Page
                 Column::make('category.name')->label('Category'),
                 Column::make('price_cents')->label('Price')->money('USD')->align('right'),
                 Column::make('status')->badge([
-                    'draft' => Color::Gray,
-                    'live' => Color::Success,
+                    'draft' => ['label' => 'Draft', 'color' => Color::Gray],
+                    'live' => ['label' => 'Live', 'color' => Color::Success],
                 ]),
                 Column::make('updated_at')->label('Updated')->date('Y-m-d')->sortable(),
             ])
@@ -63,7 +63,7 @@ class ProductsIndexPage extends Page
 | `date()`, `datetime()`, `time()` | a formatted date or time, `Y-m-d` / `Y-m-d H:i:s` / `H:i` by default |
 | `number($decimals)` | a formatted number |
 | `money('USD')` | an amount stored in minor units: 1999 renders as 19.99 USD |
-| `badge([...])` | a colored badge, color chosen by value |
+| `badge([...])` | a colored badge, its text and color chosen by value — see [Badges](#badges) |
 | `boolean()` | a check or cross icon |
 | `iconMap([...])` | an icon chosen by value |
 | `image()` | a thumbnail; shape with `square()`, `rounded()` or `circular()` |
@@ -77,6 +77,52 @@ Kind methods are exclusive: chaining two keeps only the last. Formatting happens
 **Translatable values.** `->translatable()` on a column reads a locale map and shows the default content locale, falling back to the first non-empty locale. See [translatable fields](/docs/authoring/fields#translatable-fields).
 
 **Presentation.** `align()`, `width()`, `wrap()`, `truncate()`, `noWrap()`, `muted()`, `description()`, `tooltip()`, `prefix()`/`suffix()` and `copyable()` adjust a cell without changing its value.
+
+### Badges
+
+`badge()` maps the stored value to a label and a color. It takes an inline map or an enum class:
+
+```php
+// inline map: both keys are optional
+Column::make('status')->badge([
+    'pending' => ['label' => __('Pending'), 'color' => Color::Warning],
+    'paid' => ['label' => __('Paid'), 'color' => Color::Success],
+    'refunded' => ['label' => __('Refunded')],
+]),
+
+// an enum class
+Column::make('status')->badge(OrderStatus::class),
+```
+
+The enum form reads `HasLabel` and `HasColor` from `Tbtop\Admin\Contracts`. Their signatures match Filament 4's, so a Filament enum ports by swapping its `use` lines. Cases are keyed by `->value`, or `->name` for a pure enum; a case without a label shows its name.
+
+```php
+use Tbtop\Admin\Contracts\HasColor;
+use Tbtop\Admin\Contracts\HasLabel;
+use Tbtop\Admin\Dsl\Color;
+
+enum OrderStatus: string implements HasLabel, HasColor
+{
+    case Pending = 'pending';
+    case Paid = 'paid';
+
+    public function getLabel(): ?string
+    {
+        return __(ucfirst($this->value));
+    }
+
+    public function getColor(): Color
+    {
+        return $this === self::Paid ? Color::Success : Color::Warning;
+    }
+}
+```
+
+A value missing from the map renders as stored, in gray. Keys must match what the row serializes to: a boolean cast arrives as `true`/`false`, so map a computed value with `formatUsing()` instead. `displayValue()->badge()` takes the same two forms. An array color, such as a Filament palette, throws: the client knows color names only.
+
+<Callout type="warn" title="Deprecated in v0.5.5">
+  The color-only map `badge(['paid' => Color::Success])` still works but raises an `E_USER_DEPRECATED` and is removed in 1.0. Write `['paid' => ['color' => Color::Success]]`.
+</Callout>
 
 ## Sorting
 
@@ -208,7 +254,7 @@ use Tbtop\Admin\Actions\Effects;
 use Tbtop\Admin\Dsl\Actions\DeleteAction;
 
 ->rowActions([
-    $s->action('open')->label('Open')->visit('/admin/orders/{row.id}'),
+    $s->action('open')->label('Open')->url('/admin/orders/{row.id}'),
     DeleteAction::make($s, using: function (ActionCtx $ctx): void {
         Order::whereKey($ctx->row['id'] ?? null)->delete();
     }),
@@ -237,6 +283,8 @@ Column::make('featured')->label('Featured')
         return Effects::make()->notify($value ? 'Featured' : 'Unfeatured');
     }),
 ```
+
+`selectColumn()` takes its choices from `options()`, which accepts an option list or an enum class; the cases become `{value, label}` pairs. Options imply no validation, so add `rules([Rule::enum(OrderStatus::class)])`.
 
 The model is loaded through the table's own `query()`, so a row outside that query cannot be edited, and the query must be Eloquent. Add `rules()` to the column to validate the value before `onSave` runs. An editable cell shows the raw stored value, so kind formatting does not apply, and `formatUsing()` on an editable column throws when the page renders; use `prefix()`/`suffix()` for units. `step()` without `numberInput()` throws too.
 
