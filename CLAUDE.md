@@ -31,7 +31,10 @@ check for MDX and routes.
 
 ## Deploy
 
-`CLOUDFLARE_ACCOUNT_ID=9fc01736a7873ba44582cf173fc5a157 npx wrangler deploy` — the
+A merge to `main` deploys: `.github/workflows/ci.yml` runs the gates, then
+`wrangler deploy` with the `CLOUDFLARE_API_TOKEN` repo secret. Direct pushes to
+`main` are blocked by a ruleset; every change lands through a PR. Manual
+fallback: `CLOUDFLARE_ACCOUNT_ID=9fc01736a7873ba44582cf173fc5a157 npx wrangler deploy` — the
 account that holds the tbtop.dev zone. `wrangler.jsonc` routes docs.tbtop.dev as a
 custom domain: Cloudflare creates its DNS record and certificate on deploy, so
 no record for that host may exist in the zone beforehand.
