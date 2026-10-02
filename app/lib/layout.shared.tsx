@@ -6,6 +6,7 @@ import { gitConfig } from "./shared";
 export function baseOptions(): BaseLayoutProps {
 	return {
 		nav: {
+			url: "/docs",
 			title: <BrandMark />,
 		},
 		githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
