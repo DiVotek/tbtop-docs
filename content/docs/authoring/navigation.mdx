@@ -1,6 +1,6 @@
 ---
 title: "Navigation"
-description: "How the panel menu is built from each page's nav() declaration, and how to configure groups, icons, badges, nesting, extra links, the user menu and the command palette."
+description: "How the panel menu is built from each page's nav() declaration, and how to configure groups, sections, icons, badges, nesting, extra links, the user menu and the command palette."
 ---
 
 The panel's menu is not a separate config file. Each page declares its own place in it with a static `nav()` method, and the panel adds group metadata, extra links and the command palette on top. The menu is rebuilt on every request for the current user, so pages the user cannot open are simply not in it.
@@ -30,6 +30,7 @@ public static function nav(): ?array
 | `badge` | A short string shown beside the label — a count, "New". |
 | `badgeColor` | A `Color` case (`Color::Danger`, `Color::Warning`, …) or its string value. Only used with `badge`. |
 | `parent` | Another page class to nest this item under. |
+| `section` | A section key declared on the group with `NavGroup::sections()`; see [Sections inside a group](#sections-inside-a-group). |
 
 A page is left out of the menu when:
 
@@ -68,13 +69,13 @@ The badge value is cast to a string, so a count of zero still renders as a "0" b
 
 ## Groups
 
-Groups exist as soon as a page names one. To give a group an icon, make it collapsible, or fix its position, declare it on the panel:
+Groups exist as soon as a page names one. To give a group an icon or a description, make it collapsible, or fix its position, declare it on the panel:
 
 ```php
 use Tbtop\Admin\Navigation\NavGroup;
 
 $panel->navigationGroups([
-    NavGroup::make('Sales')->icon('shopping-cart'),
+    NavGroup::make('Sales')->icon('shopping-cart')->description('Orders, invoices and refunds'),
     NavGroup::make('Catalog')->icon('package')->collapsible(),
     NavGroup::make('System')->icon('settings')->collapsed(),
 ]);
@@ -82,12 +83,28 @@ $panel->navigationGroups([
 
 - **Order.** Groups appear in the order declared here. A group that pages use but this list does not mention comes after all declared ones, in the order it was first seen.
 - **Ungrouped items come first.** Items without a `group` form one bucket with no heading, rendered above every group — the place for a Dashboard link.
+- **Description.** `description()` adds one muted, truncated line under the group's title in every layout: under the heading in the sidebar, under the title in the rail-sidebar column, and as the first line of a topbar or rail dropdown. Pass a closure to translate it, for the same reason as `label()` below.
 - **Collapse.** `collapsible()` turns the group heading into a toggle; `collapsed()` also starts it closed.
 - **Translated headings.** The string passed to `make()` is a stable key that pages match with `'group' => 'Sales'`. Set the displayed text with `->label()`, and pass a closure so it is translated per request — the panel config is built once, so a bare `__()` there would freeze on the first request's locale:
 
 ```php
 NavGroup::make('Sales')->label(fn () => __('admin.nav.sales')),
 ```
+
+## Sections inside a group
+
+A long group can be split under plain headings. Declare the sections on the group, keyed, in the order they render:
+
+```php
+NavGroup::make('Sales')->sections([
+    'work' => fn () => __('Work'),
+    'reports' => 'Reports',
+]),
+```
+
+A page opts in with `'section' => 'work'` in its `nav()`; a link added with `navigationItems()` uses `NavItem::...->section('work')`. Inside the group, items without a section come first with no heading, then the declared sections in declaration order. A section with no visible items renders no heading, so gating a page out never leaves an empty title behind.
+
+Headings are not collapsible and render in every layout: inside the sidebar group, and as labels in topbar and rail dropdown menus. `section` is ignored on ungrouped items, on items nested with `parent` (they follow their parent) and in the user menu.
 
 ## Nesting a page under another
 
@@ -111,7 +128,7 @@ use Tbtop\Admin\Navigation\NavItem;
 
 $panel->navigationItems([
     NavItem::make('Status page')->url('https://status.example.com')
-        ->icon('activity')->group('Resources')->newTab(),
+        ->icon('activity')->group('Resources')->openUrlInNewTab(),
 ]);
 ```
 
@@ -133,7 +150,28 @@ Where the menu appears is a panel setting:
 $panel->navigation('topbar');
 ```
 
-`'sidebar'` is the default. `'topbar'` puts the groups in a horizontal bar, and `'topbar-sidebar'` combines a full-width bar with a sidebar beneath it. The same `nav()` declarations drive all three, and every layout collapses to a burger drawer on small screens. The shell itself — logo, menu, header buttons — can be rearranged with a `Chrome` class; see [Panel](/docs/getting-started/panel).
+`'sidebar'` is the default. `'topbar'` puts the groups in a horizontal bar, `'topbar-sidebar'` combines a full-width bar with a sidebar beneath it, and `'rail-sidebar'` shows the groups as a narrow rail of icons beside a sidebar that lists only the active group. The same `nav()` declarations drive all four, and every layout collapses to a burger drawer on small screens. The shell itself — logo, menu, header buttons — can be rearranged with a `Chrome` class; see [Panel](/docs/getting-started/panel).
+
+### Rail + sidebar
+
+`'rail-sidebar'` suits panels with many groups. Each group becomes an icon with its label underneath; clicking it opens the group's first internal, same-tab item, and the column beside the rail lists that group's items with their sections, badges and nesting. A label too long for the rail is truncated and repeated in a tooltip.
+
+- A group without an `icon()` shows the first letter of its label. Ungrouped items live under a Home icon.
+- A group that holds only external or new-tab links gets no rail icon, since there is no page to open.
+- `collapsible()` and `collapsed()` have no effect in this layout.
+- In the rail, the stock logo shows the brand's first letter; a client `logo` slot still replaces it.
+- On mobile, the drawer shows the group icons in a row that swaps the list below without navigating.
+
+The active group is the one whose item URL is the longest match for the current URL. On a page no menu item covers, such as a record's edit page, the rail falls back to the group the page names in `nav()`, then to the last group it showed. So give an edit page a `nav()` with only its group to keep the right group lit, even though its route parameter keeps it out of the menu:
+
+```php
+public static function nav(): ?array
+{
+    return ['group' => 'Sales'];
+}
+```
+
+Try every layout on the [demo](https://demo.tbtop.dev/admin?nav=rail-sidebar): the `?nav=` parameter switches it for your session.
 
 ## Icons
 
@@ -155,7 +193,7 @@ $panel->commandPalette(fn (CommandPaletteConfig $palette) => $palette
         Command::make('New order')->url('/admin/orders/new')
             ->icon('plus')->group('Actions')->keywords(['create', 'checkout']),
         Command::make('API documentation')->url('https://docs.example.com')
-            ->group('Links')->openInNewTab(),
+            ->group('Links')->openUrlInNewTab(),
     ]));
 ```
 
@@ -176,7 +214,6 @@ Other settings on `CommandPaletteConfig`: `hotkey('mod+p')` changes the shortcut
 Things the palette does not do at this release:
 
 - **It does not search records.** It matches the labels and keywords of menu items and commands; finding an order by number is a table search.
-- **External menu links open as in-app visits.** Links added with `navigationItems()` show up in the palette like any menu item, but choosing one runs an Inertia visit rather than a normal page load or a new tab. To offer an external link from the palette, use `includeNav(false)` and add a command with `url()` (plus `openInNewTab()` if needed).
 - **Nested items are not listed.** Only top-level menu items become palette entries; a page nested with `parent` is reached through its parent.
 - **Commands are not gated.** Every user sees every command, so a command should point at a page that enforces its own `can()`.
 

@@ -113,7 +113,7 @@ class PostsPage extends Page
     public function headerActions(S $s): array
     {
         return [
-            $s->action('new')->label('New post')->color('primary')->visit('/admin/posts/new'),
+            $s->action('new')->label('New post')->color('primary')->url('/admin/posts/new'),
         ];
     }
 
@@ -143,7 +143,7 @@ class PostsPage extends Page
 What each part does:
 
 - **`title()`** sets the page heading and the browser title. Without it, the heading is the class name as words: "Posts Page".
-- **`headerActions()`** puts buttons next to the heading. `visit()` is a client-side navigation to a fixed URL.
+- **`headerActions()`** puts buttons next to the heading. `url()` is a client-side navigation to a fixed URL.
 - **`$s->table('posts')`** names the table. The name is part of its data endpoint URL, so keep it unique on the page.
 - **`columns()`** takes `Column` objects. A column with no display kind prints its value as text. `boolean()` and `date()` set a kind, and each column has only one kind.
 - **`query()`** returns a fresh Eloquent builder. Sorting, search and pagination (25 rows per page by default) run against it as SQL, and rows load from a JSON endpoint as the user pages and sorts.

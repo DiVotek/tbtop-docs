@@ -86,7 +86,7 @@ public function subtitle(): ?string
 public function headerActions(S $s): array
 {
     return [
-        $s->action('new')->label('New invoice')->color('primary')->visit('/admin/invoices/new'),
+        $s->action('new')->label('New invoice')->color('primary')->url('/admin/invoices/new'),
     ];
 }
 ```
@@ -231,7 +231,10 @@ public function view(S $s): Node
                     Column::make('number')->label('Number')->searchable(),
                     Column::make('ordered_on')->label('Ordered')->date('Y-m-d')->sortable(),
                     Column::make('total_cents')->label('Total')->money('USD')->align('right'),
-                    Column::make('status')->badge(['open' => Color::Warning, 'received' => Color::Success]),
+                    Column::make('status')->badge([
+                        'open' => ['label' => 'Open', 'color' => Color::Warning],
+                        'received' => ['label' => 'Received', 'color' => Color::Success],
+                    ]),
                 ])
                 ->defaultSort('ordered_on', 'desc'),
         ]),

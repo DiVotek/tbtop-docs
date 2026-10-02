@@ -11,7 +11,7 @@ The full method list for every kind is in the [Fields API reference](/docs/api/f
 
 ## Field kinds by purpose
 
-tbtop/admin v0.5.1 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
+tbtop/admin v0.5.6 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
 
 | Purpose | `S` factory | Value it submits |
 |---|---|---|
@@ -91,11 +91,11 @@ $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
 
 **Validation.** `required()` marks the field and adds the `required` rule; `rules()` appends any Laravel rules, as a pipe string or an array. Kinds add fluent helpers that fit them — `minLength()`, `maxLength()`, `regex()` and `alphaDash()` on text kinds, `minValue()`, `maxValue()`, `between()` and `integer()` on numbers, `unique()` and `exists()` where a value can live in a table — and each appends the same rule `rules()` would. A `boolean` has no `maxLength()`. `->regex()` is the safe way to add a pattern, and `ignore()` must follow `unique()`, since it rewrites the last `unique` rule and throws otherwise. How the rules run, and the ones that catch people out, are on [Forms](/docs/authoring/forms#validation).
 
-**Defaults.** `default()` fills the value only when the form's `record()` has no key for the field. An explicit key in `record()` always wins, even a `null`.
+**Defaults.** `default()` fills the value only when the form's `record()` has no key for the field. An explicit key in `record()` always wins, even a `null`. An enum case, or a list of cases on a multi-value field, is stored as its string option value, so `default(OrderStatus::Pending)` matches `options(OrderStatus::class)`.
 
 **Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields), with the rest of the [dynamic form tools](/docs/authoring/forms#dynamic-forms).
 
-**Copy button.** `copyable()` is declared on every field, but at v0.5.1 only the `text` input renders the button. It copies the current value.
+**Copy button.** `copyable()` is declared on every field, but at v0.5.6 only the `text` input renders the button. It copies the current value.
 
 **Escape hatches.** `set('key', $value)` writes a raw option into the field's node and `meta()` a raw node meta key; neither is validated, so a typo ships silently. Use them only for a client option that has no fluent method yet, such as an option read by your own [client component](/docs/extending/client-components).
 
@@ -121,6 +121,64 @@ How spans interact with a grid's breakpoints, and how layout blocks take the sam
 `radio`, `select`, `checkboxlist`, `togglebuttons` and `inFilter` take their options as a list of `['value' => ..., 'label' => ...]` arrays. An option can also carry `description` and `disabled`; only `radio` renders them today. `select` additionally reads `display` keys: `image` (a URL), `subtitle` and `html` (raw, unsanitized markup that replaces the other two).
 
 Option values are sent to the browser as strings. Seed defaults and `record()` values as strings too — `'plan' => 'pro'`, `'channel_ids' => ['1', '4']` — or the field will not show them as selected.
+
+### Options from an enum
+
+Every `options()` also takes an enum class. Each case becomes one option: the value is `->value` (`->name` for a pure enum), the label comes from `HasLabel` (the case name without it), and the description from `HasDescription`. The interfaces live in `Tbtop\Admin\Contracts` and match Filament 4's signatures.
+
+```php
+use Illuminate\Validation\Rule;
+use Tbtop\Admin\Contracts\HasDescription;
+use Tbtop\Admin\Contracts\HasLabel;
+
+enum Plan: string implements HasLabel, HasDescription
+{
+    case Free = 'free';
+    case Pro = 'pro';
+
+    public function getLabel(): ?string
+    {
+        return __(ucfirst($this->value));
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this === self::Pro ? __('Priority support') : null;
+    }
+}
+
+$s->radio('plan')->label('Plan')
+    ->options(Plan::class)
+    ->default(Plan::Free)
+    ->rules(['required', Rule::enum(Plan::class)]),
+```
+
+- **No validation is implied**, in this form or the array one. Add `Rule::enum()` for a backed enum; a pure enum has no `tryFrom`, so validate it with `Rule::in(array_column(Draft::cases(), 'name'))`.
+- **Int-backed enums still ship string values.** Cast the record value to a string (`'priority' => (string) $task->priority->value`), or radio, toggle buttons and checkbox lists show no selection.
+- The same enum can drive a [table badge](/docs/authoring/tables#badges) with `badge(Plan::class)`.
+
+## Rich text with embedded blocks
+
+`richtext()->embeds()` lets editors drop structured blocks between paragraphs: a callout, a quote with an author, a product card. Each block kind is an `Embed` with an ordinary field list. Editors insert one from the slash menu ("Blocks") or the toolbar's "Block" button, and edit its data in a modal form:
+
+```php
+use Tbtop\Admin\Dsl\Fields\Embed;
+
+$s->richtext('body')->label('Body')->embeds([
+    Embed::make('callout')->label('Callout')->icon('info')->summary('title')->fields([
+        $s->text('title')->required(),
+        $s->textarea('text'),
+    ]),
+])->maxEmbeds(10),
+```
+
+`summary('title')` names the field shown as the card's one-line summary; without it the card shows the label. In the stored editor state each block is a root-level node `{type: 'embed', version: 1, id, kind, data}`, where `data` holds only the declared fields. Render it on your site by walking the document and switching on `kind`.
+
+- **Validated twice.** The modal's Apply validates against the embed's fields on the server and shows errors in the modal. Saving the form validates every embed again, along with `maxEmbeds()` and unique ids, and reports a failure on the richtext field — per locale for a `translatable()` richtext.
+- **Unknown kinds are kept.** A block whose kind the field no longer declares renders as "Unknown block" and saves untouched; pasting it into a field that does not declare it drops it.
+- **No nesting.** A richtext with its own `embeds()` inside `Embed::fields()` throws, and `translatable()` on an embed field is ignored — the richtext is already the translated unit.
+- **Unique field names.** A `select`, `relation`, `upload` or `daterange` inside an embed must not share its name with a field of the form or of another embed; the page throws a `LogicException` when it renders.
+- A document holding only embeds is not empty, so `required()` passes.
 
 ## Relations
 

@@ -55,7 +55,7 @@ The admin is drawn with shadcn-style design tokens: CSS variables such as `--pri
 
 Override only the tokens you change. The rest keep the package values. A palette from a shadcn theme generator works the same way: paste its `:root` and `.dark` value blocks and leave out its `@import` and `@theme inline` lines, which the package already has.
 
-The tokens the package defines at v0.5.1:
+The tokens the package defines at v0.5.6:
 
 | Token | Used for |
 |---|---|
@@ -71,10 +71,10 @@ The tokens the package defines at v0.5.1:
 | `--border`, `--input`, `--ring` | Borders, input borders, focus rings |
 | `--chart-1` … `--chart-5` | Chart series |
 | `--chart-success`, `--chart-warning`, `--chart-danger` | Trend lines on stat cards |
-| `--sidebar`, `--sidebar-foreground`, `--sidebar-primary`, `--sidebar-accent`, `--sidebar-border`, `--sidebar-ring` and their pairs | Defined for shadcn compatibility. The stock shell does not use them at v0.5.1. |
+| `--sidebar`, `--sidebar-foreground`, `--sidebar-primary`, `--sidebar-accent`, `--sidebar-border`, `--sidebar-ring` and their pairs | Defined for shadcn compatibility. The stock shell does not use them at v0.5.6. |
 
 <Callout type="info" title="The sidebar follows --background">
-  Changing `--sidebar` has no visible effect at v0.5.1: the stock sidebar uses `--background` and `--border`, and the active item uses `--accent`. The sidebar's frame is not part of the chrome tree, and at v0.5.1 no token or panel setting tints it separately: the frame takes `--background`.
+  Changing `--sidebar` has no visible effect at v0.5.6: the stock sidebar uses `--background` and `--border`, and the active item uses `--accent`. The sidebar's frame is not part of the chrome tree, and at v0.5.6 no token or panel setting tints it separately: the frame takes `--background`.
 </Callout>
 
 ### Radius
@@ -100,7 +100,10 @@ registerTableColor("violet", { bg: "bg-violet-600", text: "text-white", icon: "t
 ```
 
 ```php
-Column::make('tier')->badge(['vip' => 'violet', 'standard' => 'gray']),
+Column::make('tier')->badge([
+    'vip' => ['label' => 'VIP', 'color' => 'violet'],
+    'standard' => ['label' => 'Standard', 'color' => 'gray'],
+]),
 ```
 
 Write the class names out in full, as above. Tailwind finds classes by scanning source text, so a class built from a string at runtime is not generated. An unknown colour name falls back to the `gray` styling.
@@ -151,7 +154,7 @@ These `PanelConfig` settings rearrange the shell. They are covered in [Register 
 
 ```php
 $panel
-    ->navigation('topbar')     // 'sidebar' (default) | 'topbar' | 'topbar-sidebar'
+    ->navigation('topbar')     // 'sidebar' (default) | 'topbar' | 'topbar-sidebar' | 'rail-sidebar'
     ->maxContentWidth('7xl')   // sm … 7xl, full, prose; page content is capped at 5xl otherwise
     ->density('compact');      // 'default' | 'compact': smaller controls, tighter spacing, narrower sidebar
 ```
@@ -159,8 +162,9 @@ $panel
 - `sidebar` puts the logo and the navigation in a left sidebar and the header items in a top strip.
 - `topbar` puts the logo and the navigation in one horizontal bar. Navigation groups become dropdowns.
 - `topbar-sidebar` is a full-width top bar with a sidebar beneath it. The bar shows the brand text and a button that collapses the sidebar to an icon rail.
+- `rail-sidebar` shows each navigation group as a labelled icon in a narrow rail, beside a sidebar that lists only the active group. See [Rail + sidebar](/docs/authoring/navigation#rail--sidebar).
 
-All three collapse to a drawer on small screens. The chrome you author is the same in every layout; only its arrangement changes.
+All four collapse to a drawer on small screens. The chrome you author is the same in every layout; only its arrangement changes.
 
 A single page can leave the shell entirely: `layout()` returning `'center'` renders it without sidebar and header, centred on the screen. Sign-in pages use this. See [Pages](/docs/authoring/pages#page-hooks) and [Authentication](/docs/getting-started/authentication).
 
@@ -191,7 +195,7 @@ class AdminChrome extends Chrome
     {
         return [
             $s->notifications(),
-            $s->action('view-site')->label('View site')->visit('/', newTab: true), // a same-origin visit() is an Inertia visit, and the admin bundle cannot render the site's pages
+            $s->action('view-site')->label('View site')->url('/')->openUrlInNewTab(), // a same-tab url() to the same origin is an Inertia visit, and the admin bundle cannot render the site's pages
             $s->themeToggle(),
             ...parent::headerItems($s), // the user menu, kept last so it sits at the far right
         ];
@@ -222,7 +226,7 @@ The building blocks made for the shell, all on `$s`:
 | `localeSwitcher('dropdown')` | A standalone interface-language switcher, `'buttons'` by default. Hidden when the panel has no locales; with a single locale it still shows one button, so add it only when `->locales()` lists two or more. |
 | `spacer()` | Pushes the following items to the far edge |
 
-Any other node works too: `flex`, `stack`, `displayText`, `displayImage`, your own blocks. Actions in the chrome must be `visit()` or `custom()` actions. A server action (`->handle()`) has no page endpoint to post to, so the panel throws when it serializes the chrome.
+Any other node works too: `flex`, `stack`, `displayText`, `displayImage`, your own blocks. Actions in the chrome must be `url()` or `custom()` actions. A server action (`->handle()`) has no page endpoint to post to, so the panel throws when it serializes the chrome.
 
 Entries in the user menu and extra navigation links are panel settings, not chrome: `userMenuItems()` and `navigationItems()`. See [Navigation](/docs/authoring/navigation).
 
@@ -269,7 +273,7 @@ function Logo({ options }: RenderProps<LogoOptions>) {
 registerBlock<"app:logo", LogoOptions>({ kind: "app:logo", behavior: "leaf", render: Logo });
 ```
 
-The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.5.1 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
+The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.5.6 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
 
 ## Styling blocks from PHP
 

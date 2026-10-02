@@ -118,7 +118,7 @@ return $panel
     ->id('admin')
     ->rootView('admin')
     ->brand('Acme')                       // name shown in the sidebar or top bar header
-    ->navigation('sidebar')               // 'sidebar' | 'topbar' | 'topbar-sidebar'
+    ->navigation('sidebar')               // 'sidebar' | 'topbar' | 'topbar-sidebar' | 'rail-sidebar'
     ->maxContentWidth('7xl')              // Tailwind max-w token: sm … 7xl, full, prose
     ->density('compact')                  // 'default' | 'compact'
     ->defaultThemeMode('system')          // 'light' | 'dark' | 'system'
@@ -129,7 +129,7 @@ return $panel
     ->defaultLocale('en');
 ```
 
-- **Navigation layout.** All three layouts collapse to a drawer on small screens. An unknown value throws.
+- **Navigation layout.** All four layouts collapse to a drawer on small screens. An unknown value throws.
 - **Content width.** Without `maxContentWidth()`, page content is capped at `5xl`.
 - **Theme.** `defaultThemeMode()` applies only when the visitor has no saved `tbtop_theme` cookie. If you pick a default other than `system`, change the inline script in `admin.blade.php` too; see [Dark mode](/docs/getting-started/customization#dark-mode). Colours, radius and fonts are not panel settings: they are CSS variables in `resources/css/admin.css`, covered in [Colours](/docs/getting-started/customization#colours).
 - **UI language.** `locales()` is the language of the admin interface. The chosen locale is kept in the session. The package ships English and Ukrainian strings. With two or more locales, the user menu shows a language switcher. The languages your *content* is stored in are a different setting: `content_locales` in `config/tbtop-admin.php`.
@@ -148,7 +148,7 @@ The stock header has no theme toggle. Add `$s->themeToggle()` if users should be
 
 ### Navigation and the command palette
 
-Pages put themselves in the menu through their own `nav()` method. At the panel level, `navigationGroups()` sets group icons and collapsing, `navigationItems()` adds links that are not pages, and `userMenuItems()` adds entries to the user menu. All three are covered in [Navigation](/docs/authoring/navigation).
+Pages put themselves in the menu through their own `nav()` method. At the panel level, `navigationGroups()` sets group icons, descriptions, sections and collapsing, `navigationItems()` adds links that are not pages, and `userMenuItems()` adds entries to the user menu. All three are covered in [Navigation](/docs/authoring/navigation).
 
 The command palette (⌘K) is on by default. It searches the navigation. Disable it with `->commandPalette(false)`, or pass a closure to add commands:
 

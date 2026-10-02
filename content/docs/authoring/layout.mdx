@@ -5,7 +5,7 @@ description: "The S builder's structural blocks (stack, row, flex, grid, section
 
 A page's `view()` returns one node tree. Structural blocks arrange other nodes; content blocks show something read-only. Forms, tables, stats, charts and lists are nodes like any other, so they go anywhere in the tree: two tables side by side, a form inside a tab next to a chart, a table inside a card section. There is no fixed page type and no limit on how many of each a page holds; the one rule is that each form, table, action, stat and chart name is unique per page ([Pages](/docs/authoring/pages#how-a-page-runs)).
 
-This page covers every structural and content block `S` has at v0.5.1. Exhaustive signatures are in the [S builder reference](/docs/api/builder) and the [blocks reference](/docs/api/blocks).
+This page covers every structural and content block `S` has at v0.5.6. Exhaustive signatures are in the [S builder reference](/docs/api/builder) and the [blocks reference](/docs/api/blocks).
 
 ## Options are validated
 
@@ -91,7 +91,8 @@ A section groups children under an optional header.
 | `columns` | Lay the children out in a grid (same shape as `cols`) instead of a stack |
 | `collapsible`, `collapsed` | Chevron toggle in the header; `collapsed` sets the initial state |
 | `aside` | One node rendered as a right-hand column on `md` and wider |
-| `action` | `['label' => …, 'url' => …]`: a quiet link at the right of the header |
+| `actions` | A list of actions, right-aligned in the header row |
+| `url`, `openUrlInNewTab` | Make the whole section one link; see [Linked sections](#linked-sections) |
 | `class`, `colSpan`, `colStart` | Extra classes; placement in a parent grid |
 
 ```php
@@ -102,7 +103,9 @@ $s->section([
     'variant' => 'card',
     'columns' => 2,
     'collapsible' => true,
-    'action' => ['label' => 'Carriers', 'url' => '/admin/carriers'],
+    'actions' => [
+        $s->action('carriers')->label('Carriers')->url('/admin/carriers')->link(),
+    ],
 ], [
     $s->text('street')->label('Street')->columnSpan(2),
     $s->text('city')->label('City'),
@@ -111,6 +114,16 @@ $s->section([
 ```
 
 Passing `label` instead of `title` throws with a "Did you mean 'title'?" hint. When a section is both collapsible and has an `aside`, collapsing hides the body but keeps the aside visible.
+
+**Header actions.** `actions` takes any actions — `url()`, `handle()`, `modal()` — and renders them where the title sits; a section with actions and no title still gets a header row. Actions go through the usual `when()` and `authorize()` filtering. A `handle(..., needs: ['form'])` header action on a section inside a form receives that form's validated values, like any action nested in the form. `aside` is something else: a side column of the body for context content. Put buttons in `actions`, not in `aside`.
+
+<Callout type="warn" title="Deprecated in v0.5.6">
+  The single `'action' => ['label' => …, 'url' => …]` still works but raises an `E_USER_DEPRECATED` and is removed in 1.0. It is rewritten into one link-styled action, so it now renders in the primary color instead of muted. Combining `action` and `actions` throws. Write `'actions' => [$s->action('x')->label(…)->url(…)->link()]`.
+</Callout>
+
+### Linked sections
+
+`'url' => '/admin/orders'` makes the whole section one link, like a linked [stat](#data-blocks-and-action-rows): a same-origin path is an in-app visit, an off-origin URL or `mailto:` a normal navigation. `'openUrlInNewTab' => true` opens it in a new tab and does nothing without `url`. Use it for read-only summary cards: anything interactive inside — header actions, a collapsible toggle, fields, a table — sits inside the link, and a click on it also navigates.
 
 A card section pads its body. The exception is a `table` that is a direct child: the table draws its own border, so the card drops the padding. A table nested one level deeper, inside a `stack` in the card, keeps the padding.
 
@@ -125,7 +138,10 @@ $s->row([
     $detailsTabs,
     $s->aside([
         $s->section(['title' => 'Status', 'variant' => 'card'], [
-            $s->displayValue($order->status)->badge(['paid' => Color::Success, 'pending' => Color::Warning]),
+            $s->displayValue($order->status)->badge([
+                'paid' => ['label' => 'Paid', 'color' => Color::Success],
+                'pending' => ['label' => 'Pending', 'color' => Color::Warning],
+            ]),
         ]),
     ]),
 ], ['gap' => 6]),
@@ -213,7 +229,19 @@ Builders serialize themselves, so a `table`, `stat` or `chart` goes straight int
 
 `actionsRow($actions)` renders standalone buttons in a row, outside any form or table. `['variant' => 'grid']` lays them out as a grid of bordered tiles (two columns, three from `sm`, four from `lg`), which suits a page of quick links.
 
-Stats have no card wrapper to configure: a stat is already a card. A row of stats is a `grid` of stats.
+Stats have no card wrapper to configure: a stat is already a card. A row of stats is a `grid` of stats. `url()` makes the whole card a link, so a KPI can open the list behind it; add `openUrlInNewTab()` for a new tab.
+
+A `list` row is an array with `title` (required), `meta`, `color` (`success`, `warning`, `danger` or `muted`), `url` and `openUrlInNewTab`, or the same row built with `$s->listItem()`. The two forms mix freely:
+
+```php
+$s->list('recent')->items(fn () => [
+    ['title' => 'Order #1042', 'meta' => '2h ago', 'url' => '/admin/orders/1042'],
+    $s->listItem('Carrier status')->meta('external')->color('muted')
+        ->url('https://status.example.com')->openUrlInNewTab(),
+]),
+```
+
+Unknown keys in the array form are ignored without an error, so a misspelt `'newTab'` does nothing.
 
 ## A composed page
 
@@ -250,7 +278,8 @@ class SalesPage extends Page
                 $s->stat('Pending')
                     ->value(fn () => Order::where('status', 'pending')->count())
                     ->icon('clock')
-                    ->color(Color::Warning),
+                    ->color(Color::Warning)
+                    ->url('/admin/orders?tab=pending'),
                 $s->stat('Customers')
                     ->value(fn () => Customer::count())
                     ->icon('users'),
@@ -268,7 +297,10 @@ class SalesPage extends Page
                             'customer_name' => 'Customer',
                             Column::make('total_cents')->label('Total')->money('USD'),
                             Column::make('status')->label('Status')
-                                ->badge(['paid' => Color::Success, 'pending' => Color::Warning]),
+                                ->badge([
+                                    'paid' => ['label' => 'Paid', 'color' => Color::Success],
+                                    'pending' => ['label' => 'Pending', 'color' => Color::Warning],
+                                ]),
                         ])
                         ->searchable(['number', 'customer_name'])
                         ->defaultSort('created_at', 'desc')
@@ -302,6 +334,7 @@ class SalesPage extends Page
                                 'title' => $o->number,
                                 'meta' => $o->created_at->diffForHumans(),
                                 'color' => 'warning',
+                                'url' => "/admin/orders/{$o->id}",
                             ])->all()),
                     ]),
                 ]),
@@ -313,7 +346,7 @@ class SalesPage extends Page
 
 What each piece does:
 
-- The stats grid uses an int `cols`: one column on a phone, four from `md`.
+- The stats grid uses an int `cols`: one column on a phone, four from `md`. The Pending card links to the orders list.
 - The second grid has three columns from `lg`. The orders section spans two of them with a breakpoint-matched `colSpan`; below `lg` both columns stack at full width.
 - The table is a direct child of a card section, so the card is frameless around it.
 - Inside the form, the fields are wrapped in a `grid` because a form stacks its children. `name` spans both columns from `sm`, matching the grid's own breakpoint.
