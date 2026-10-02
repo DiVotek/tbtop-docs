@@ -153,7 +153,7 @@ $s->radio('plan')->label('Plan')
     ->rules(['required', Rule::enum(Plan::class)]),
 ```
 
-- **No validation is implied**, in this form or the array one. Add `Rule::enum()` for a backed enum; a pure enum has no `tryFrom`, so validate it with `Rule::in(array_column(Draft::cases(), 'name'))`.
+- **No validation is implied**, in this form or the array one. Add `Rule::enum()` for a backed enum; a pure enum (no backing type, so no `tryFrom`) is validated against its case names, for example `Rule::in(array_column(Size::cases(), 'name'))` for `enum Size { case Small; case Large; }`.
 - **Int-backed enums still ship string values.** Cast the record value to a string (`'priority' => (string) $task->priority->value`), or radio, toggle buttons and checkbox lists show no selection.
 - The same enum can drive a [table badge](/docs/authoring/tables#badges) with `badge(Plan::class)`.
 
