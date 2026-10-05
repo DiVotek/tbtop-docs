@@ -18,7 +18,7 @@ The endpoint has three tools. An agent learns what it can do with `search`, then
 | Tool | What it does | Annotation |
 |---|---|---|
 | `search` | Lists the pages the user may open, with the executables (actions and forms) and tables of each page that takes no route params. With a page and its params, describes one record page. | read-only |
-| `query` | Reads rows from a table, with its pagination, filters, filter tabs, sorting and search. | read-only |
+| `query` | Reads rows from a table, with its pagination, filters, filter tabs, sorting and search. Also lists choices for a field or filter whose options are `dynamic`. | read-only |
 | `execute` | Runs an action or a form by id, with form values, a row or a selection of row keys. | destructive |
 
 `execute` is always marked destructive. Actions are code you write, so the package cannot tell a delete from an edit and does not guess. The MCP client reads the annotation and decides what to confirm with the user before it runs the call.
@@ -36,7 +36,7 @@ Invalid input comes back as validation errors keyed by field, and the handler do
 
 ## Enable it
 
-Install `laravel/mcp`. tbtop/admin suggests it but does not require it:
+Install `laravel/mcp`. tbtop/admin suggests it but does not require it. The MCP server needs **Laravel 12.41 or newer** (`laravel/mcp` depends on `illuminate/json-schema`); the rest of tbtop/admin still runs on Laravel 11.
 
 ```bash
 composer require laravel/mcp
@@ -65,10 +65,17 @@ Enabling it without `laravel/mcp` installed throws when the routes are registere
 
 ### The middleware list is the whole stack
 
-The middleware you pass to `mcp()` **replaces** the panel's middleware for this route; it does not add to it. The route runs the package's panel binding, then exactly your list, then the admin locale:
+The middleware you pass to `mcp()` **replaces** the panel's middleware for this route; it does not add to it. The route runs the package's panel binding, origin validation, then exactly your list, then the admin locale:
 
 ```
-SetCurrentPanel → ...your mcp() middleware → SetAdminLocale
+SetCurrentPanel → ValidateMcpOrigin → ...your mcp() middleware → SetAdminLocale
+```
+
+**Origin is checked by the package.** Streamable HTTP MCP requires it; `laravel/mcp` does not validate origins for you. A request with no `Origin` header passes (Claude Desktop, Cursor, CLI clients). A browser `Origin` must match the app's own origin or one you list with `mcpAllowedOrigins()` on the panel; anything else gets `403` before your middleware runs, which blocks DNS rebinding and cross-site calls:
+
+```php
+->mcp(['auth:sanctum', 'abilities:tbtop-mcp', 'can:access-admin'])
+->mcpAllowedOrigins(['https://agent.example.com']);
 ```
 
 The panel's usual `web` + `auth:{guard}` stack would not work here anyway. It is session-based: it rejects a bearer token with a 401, and a POST from something that is not a browser fails CSRF with a 419. So:
@@ -124,7 +131,7 @@ Other clients take the same two things: the URL of the endpoint and an `Authoriz
 
 A page with route params, such as `posts/{post}`, is listed with its param names only. The agent calls `search` again with the page slug and `params` (as strings, `{"post": "12"}`) to build that record's page and see its executables and tables.
 
-Each executable states what it `needs`: `form` values, a `row` from `query`, or a `selection` of row keys for a bulk action. It also states the table it belongs to and its confirmation title, if it has one. A form is described field by field: kind, label, the Laravel validation rules as strings, and the options of a select, radio and similar fields (`dynamic` when they are fetched by search). A form bound to a record also carries its current `values`, the data the UI would prefill, except passwords.
+Each executable states what it `needs`: `form` values, a `row` from `query`, or a `selection` of row keys for a bulk action. It also states the table it belongs to and its confirmation title, if it has one. A form is described field by field: kind, label, the Laravel validation rules as strings, `mask` and `dependsOn` when set, and the options of a select, radio, relation and similar fields (a fixed list, `dynamic` when a `query()` lookup serves them through `query`, or omitted when the field is free-form). Repeater children appear under their row rule name, such as `sections.*.title`, with the same shape as top-level fields. A `richtext` field also lists the Lexical `nodes` it allows and each embed `kind` with the fields of its `data`. Fields the agent cannot fill are listed separately on the executable as `excludedFields`, with a reason. A form bound to a record also carries its current `values`, the data the UI would prefill, except passwords.
 
 A page as `search` lists it, trimmed:
 
@@ -147,7 +154,7 @@ A page as `search` lists it, trimmed:
 
 The rules are listed, not converted into a JSON Schema. The server validates every call, and the errors it returns name the field and the rule, so the agent corrects its input the way a person would.
 
-### Reading rows
+### Reading rows and dynamic options
 
 `query` takes the page slug, the table name and the page's `params`, plus any of `pageNumber`, `perPage`, `search`, `columnSearch`, `filters`, `tab`, `sort` and `dir`. It returns what the admin table receives: each row's visible columns formatted as they display, the record's other attributes, and its key (`id` for Eloquent models), plus `total`, `page` and `perPage`:
 
@@ -159,11 +166,21 @@ A row goes back to `execute` unchanged as `row` for a row action, and the handle
 
 Rows are formatted for display. To edit a record, the agent builds the change from the form's `values` that `search` returns, not from a row.
 
+For a field or table filter whose options are `dynamic`, the same `query` tool lists choices the way the UI's type-ahead would. Pass `executable` and `field` (the field name as `search` lists it, including `parent.*.child` inside a repeater), or `table` and `filter`, plus optional `search` text to narrow the list. When the field has `dependsOn`, pass `deps` as `{parent: value}` for every parent name; a missing parent is refused. The answer is `{"options": [{"value": "…", "label": "…"}]}`. Do not mix row-reading arguments with an options lookup, or pass `executable` and `table` together.
+
+`query` checks the page gate first, then refuses arguments `search` did not list for that table: unknown sort columns (including the default-sort field, which `search` lists in `sortable`), `perPage` values, filter names, `columnSearch` columns and table-wide `search` when the table is not searchable. `dir` must be `asc` or `desc`; search text must be a string or number.
+
 ### Running actions and forms
 
 `execute` takes the executable's id, the page's `params` and what it needs. It returns `ok` and the effects the UI would show, such as a notification or a table refresh: `{"ok": true, "effects": [{"kind": "notify", "message": "Published", "level": "success"}]}`. A form handler that redirects returns the `redirect` URL, and, when the URL is a page of this panel, the `page` and `params` it opens, so the agent can `search` that page next. A `redirect` effect from an action carries the same `page` and `params`.
 
+`execute` refuses a call missing what the executable `needs`: an empty `selection` counts as missing, and a `row` without its `id` is refused. Row keys in `selection` stay strings when the agent sends strings, as in the browser.
+
 A field the agent leaves out of `form` is absent from the handler's input. For an edit, whether that clears the column depends on your handler; the tool description tells the agent to resend the `values` of the fields it keeps.
+
+**Richtext** is fillable: send the raw Lexical editor state `{root: …}` the UI stores, copying node shapes from `values` or from the `nodes` list in `search`. HTML strings are refused. Before your handler runs, the server checks every node type against the editor allowlist and the keys Lexical reads on import; embed `data` is still validated by `EmbedsRule`. **Upload and media** fields stay excluded: omit them, or send the stored value unchanged (for example echo a repeater row from `values` whole). A changed value on an excluded field is refused before validation runs.
+
+Row and bulk handlers receive `$ctx->row` and `$ctx->selection` as client input, exactly as from the browser. Re-load records by key through the same query scope the table uses and authorize them in the handler; do not trust other row fields the agent sends.
 
 ### Errors
 
@@ -173,7 +190,9 @@ Every tool error is JSON with the same shape:
 { "message": "Validation failed; nothing was run.", "errors": { "title": ["The title field is required."] } }
 ```
 
-`errors` is present for validation failures. Other errors carry only a `message`: a denied page gate (`Forbidden: …`), a record that does not exist, a page called without the params it needs, an unknown page or executable, or one that is not executable for this user, such as an action whose `->authorize()` fails or that `->mcp(false)` hides. A param that contains `/`, `?` or `#` is refused, so a value cannot steer a call onto another page's route.
+`errors` is present for validation failures. Other errors carry only a `message`: a denied page gate (`Forbidden: …`), a record that does not exist, a page called without the params it needs, an unknown page or executable, or one that is not executable for this user, such as an action whose `->authorize()` fails or that `->mcp(false)` hides. A param that contains `/`, `?` or `#` is refused, so a value cannot steer a call onto another page's route. An unexpected server failure is logged and answered `Server error; see the application log.` without leaking exception text. A disallowed browser `Origin` is `403` with a JSON-RPC error before auth runs.
+
+Keep **destructive confirmation on** in the MCP client for every `execute` call. The package always marks `execute` destructive so the client asks the user each time; turning on "always allow" for `execute` removes that safety net. Hide actions agents should never run with `->mcp(false)` and keep irreversible ones behind `->authorize()` for roles agents do not get.
 
 ## Curate what the agent sees
 
@@ -202,12 +221,17 @@ Every server action is an executable, including interface plumbing such as a mod
 Some things are excluded automatically, and `search` lists them under `excluded` with the reason:
 
 - `custom` actions, which run only in the browser,
-- `upload`, `media` and `richtext` fields, whose values an agent cannot produce. Such a field is listed under the form's `excludedFields` and is never part of the input.
-- A form, or an action that submits one, whose every field is excluded.
+- the media library block (`{page-slug}:mediaLibrary`) and drag-reorder on a table (`{page-slug}:{table}.reorder`), which run only in the browser,
+- a form, or an action that submits one, whose every field is excluded or that has a required excluded field. Required means a rule key of the field holds `required` without `sometimes` on that same key; inside a repeater, an excluded child blocks the form only when the repeater is required or has `minItems`. An edit form whose file already exists can stay executable with `->required()->rules('sometimes')`.
+
+`upload` and `media` fields are listed on the executable under `excludedFields` with a reason. They are not fillable, but an edit may resend their stored value unchanged.
+
+`search` does not list an executable that cannot pass validation on an `onSubmit` form or on an action that validates its form.
 
 ## Limits
 
 - The package ships no token auth and no token screen. The host issues and revokes tokens.
 - Page and panel middleware do not run for MCP calls. An access rule that lives only there does not apply: move it to `Page::can()` or repeat it in `mcp()`.
-- Files and rich text cannot be set over MCP.
+- File uploads and the media picker cannot be set over MCP; richtext is Lexical JSON only.
 - `execute` is always annotated destructive, even for a harmless action.
+- MCP needs Laravel 12.41+ even when the rest of the app stays on Laravel 11.
