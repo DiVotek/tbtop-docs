@@ -73,7 +73,7 @@ The middleware you pass to `mcp()` **replaces** the panel's middleware for this 
 SetCurrentPanel → ValidateMcpOrigin → ...your mcp() middleware → SetAdminLocale
 ```
 
-**Origin is checked by the package.** Streamable HTTP MCP requires it; `laravel/mcp` does not validate origins for you. A request with no `Origin` header passes (Claude Desktop, Cursor, CLI clients). A browser `Origin` must match the app's own origin or one you list with `mcpAllowedOrigins()` on the panel; anything else gets `403` before your middleware runs, which blocks calls from another site's page:
+**Origin is checked by the package.** Streamable HTTP MCP requires it; `laravel/mcp` does not validate origins for you. A request with no `Origin` header passes (Claude Desktop, Cursor, CLI clients). A browser `Origin` must match the origin of `APP_URL` or one you list with `mcpAllowedOrigins()` on the panel; anything else gets `403` before your middleware runs, which blocks DNS rebinding and calls from another site's page. The request's own `Host` does not count, so a browser client that reaches the app on another host or scheme, such as `http://127.0.0.1:8000` while `APP_URL` is `http://localhost`, needs a correct `APP_URL` or an entry in the list:
 
 ```php
 ->mcp(['auth:sanctum', 'abilities:tbtop-mcp', 'can:access-admin', 'throttle:60,1'])
