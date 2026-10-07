@@ -256,7 +256,7 @@ use Tbtop\Admin\Dsl\Actions\DeleteAction;
 ->rowActions([
     $s->action('open')->label('Open')->url('/admin/orders/{row.id}'),
     DeleteAction::make($s, using: function (ActionCtx $ctx): void {
-        Order::whereKey($ctx->row['id'] ?? null)->delete();
+        Order::whereKey($ctx->key())->delete();
     }),
 ])
 ->bulkActions([

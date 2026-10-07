@@ -19,7 +19,7 @@ The endpoint has three tools. An agent learns what it can do with `search`, then
 |---|---|---|
 | `search` | Lists the pages the user may open, with the executables (actions and forms) and tables of each page that takes no route params. With a page and its params, describes one record page. | read-only |
 | `query` | Reads rows from a table, with its pagination, filters, filter tabs, sorting and search. Also lists choices for a field or filter whose options are `dynamic`. | read-only |
-| `execute` | Runs an action or a form by id, with form values, a row or a selection of row keys. | destructive |
+| `execute` | Runs an action or a form by id, with form values, a `row` from `query` (with `_key`) or a `selection` of row `_key` values. | destructive |
 
 `execute` is always marked destructive. Actions are code you write, so the package cannot tell a delete from an edit and does not guess. The MCP client reads the annotation and decides what to confirm with the user before it runs the call.
 
@@ -147,7 +147,7 @@ Claude Desktop starts only local (stdio) servers, so bridge it to the endpoint w
 
 A page with route params, such as `posts/{post}`, is listed with its param names only. The agent calls `search` again with the page slug and `params` (as strings, `{"post": "12"}`) to build that record's page and see its executables and tables.
 
-Each executable states what it `needs`: `form` values, a `row` from `query`, or a `selection` of row keys for a bulk action. It also states the table it belongs to and its confirmation title, if it has one. A form is described field by field: kind, label, the Laravel validation rules, `mask` and `dependsOn` when set, and the options of a select, radio, relation and similar fields (a fixed list, `dynamic` when a `query()` lookup serves them through `query`, or omitted when the field is free-form). Repeater children appear under their row rule name, such as `sections.*.title`, with the same shape as top-level fields. A `translatable` field takes an object keyed by locale, `{"en": "…", "uk": "…"}`, and lists the per-locale rules as its `nestedRules`. A `richtext` field also lists the Lexical `nodes` it allows and each embed `kind` with the fields of its `data`. Fields the agent cannot fill are listed separately as `excludedFields`, with a reason: on a form executable itself, and inside the `form` of an action. A form bound to a record also carries its current `values`, the data the UI would prefill, except passwords.
+Each executable states what it `needs`: `form` values, a `row` from `query`, or a `selection` of `_key` values from those rows for a bulk action. It also states the table it belongs to and its confirmation title, if it has one. A form is described field by field: kind, label, the Laravel validation rules, `mask` and `dependsOn` when set, and the options of a select, radio, relation and similar fields (a fixed list, `dynamic` when a `query()` lookup serves them through `query`, or omitted when the field is free-form). Repeater children appear under their row rule name, such as `sections.*.title`, with the same shape as top-level fields. A `translatable` field takes an object keyed by locale, `{"en": "…", "uk": "…"}`, and lists the per-locale rules as its `nestedRules`. A `richtext` field also lists the Lexical `nodes` it allows and each embed `kind` with the fields of its `data`. Fields the agent cannot fill are listed separately as `excludedFields`, with a reason: on a form executable itself, and inside the `form` of an action. A form bound to a record also carries its current `values`, the data the UI would prefill, except passwords.
 
 A page as `search` lists it, trimmed:
 
@@ -172,13 +172,13 @@ The rules are listed, not converted into a JSON Schema. The server validates eve
 
 ### Reading rows and dynamic options
 
-`query` takes the page slug, the table name and the page's `params`, plus any of `pageNumber`, `perPage`, `search`, `columnSearch`, `filters`, `tab`, `sort` and `dir`. It returns what the admin table receives: each row's key (`id` for Eloquent models) and its visible columns formatted as they display, and no other attributes of the record, plus `total`, `page` and `perPage`:
+`query` takes the page slug, the table name and the page's `params`, plus any of `pageNumber`, `perPage`, `search`, `columnSearch`, `filters`, `tab`, `sort` and `dir`. It returns what the admin table receives: each row's visible columns formatted as they display, plus `_key` — the raw record key the table uses for selection and row actions. No column can overwrite `_key`; a visible `id` column may be formatted or missing when the model is keyed otherwise, so agents and handlers should read `_key`, not `id`. No other attributes of the record are included. Pagination metadata is `total`, `page` and `perPage`:
 
 ```json
-{ "data": [{ "id": 12, "title": "Hello world", "status": "Draft" }], "total": 1, "page": 1, "perPage": 25 }
+{ "data": [{ "_key": 12, "title": "Hello world", "status": "Draft" }], "total": 1, "page": 1, "perPage": 25 }
 ```
 
-A row goes back to `execute` unchanged as `row` for a row action, and the handler receives it as `$ctx->row`, exactly as from the browser. Row keys go to `execute` as `selection` for a bulk action.
+A row goes back to `execute` unchanged as `row` for a row action, including `_key`, and the handler receives it as `$ctx->row`, exactly as from the browser. Use `$ctx->key()` in the handler to read the record key (`_key`, with a fallback to `id` only on custom table payloads). Pass each row's `_key` to `execute` as `selection` for a bulk action.
 
 Rows are formatted for display. To edit a record, the agent builds the change from the form's `values` that `search` returns, not from a row.
 
@@ -190,13 +190,13 @@ For a field or table filter whose options are `dynamic`, the same `query` tool l
 
 `execute` takes the executable's id, the page's `params` and what it needs. It returns `ok` and the effects the UI would show, such as a notification or a table refresh: `{"ok": true, "effects": [{"kind": "notify", "message": "Published", "level": "success"}]}`. A form handler that redirects returns the `redirect` URL, and, when the URL is a page of this panel, the `page` and `params` it opens, so the agent can `search` that page next. A `redirect` effect from an action carries the same `page` and `params`.
 
-`execute` refuses a call missing what the executable `needs`: an empty `selection` counts as missing, and a `row` without its `id` is refused. Row keys in `selection` reach the handler as they would from the browser: a canonical integer string such as `"12"` becomes the integer `12`, and any other string, such as `"012"` or a UUID, stays a string.
+`execute` refuses a call missing what the executable `needs`: an empty `selection` counts as missing, and a `row` without a usable `_key` (or legacy `id` on a custom payload) is refused with a message such as `"posts-page:publish" needs a row with its key "_key". Pass a row from query() unchanged.` Bulk actions expect `selection` to list `_key` values; they reach the handler as from the browser: a canonical integer string such as `"12"` becomes the integer `12`, and any other string, such as `"012"` or a UUID, stays a string.
 
 A field the agent leaves out of `form` is absent from the handler's input. For an edit, whether that clears the column depends on your handler; the tool description tells the agent to resend the `values` of the fields it keeps.
 
 **Richtext** is fillable: send the raw Lexical editor state `{root: …}` the UI stores, copying node shapes from `values` or from the `nodes` list in `search`. HTML strings are refused. Before your handler runs, the server checks every node type against the editor allowlist and the keys Lexical reads on import; embed `data` is still validated by `EmbedsRule`. **Upload and media** fields stay excluded: omit them, or send the stored value unchanged (for example echo a repeater row from `values` whole). A changed value on an excluded field is refused before validation runs.
 
-Row and bulk handlers receive `$ctx->row` and `$ctx->selection` as client input, exactly as from the browser. Re-load records by key through the same query scope the table uses and authorize them in the handler; do not trust other row fields the agent sends.
+Row and bulk handlers receive `$ctx->row` and `$ctx->selection` as client input, exactly as from the browser. Re-load records with `whereKey($ctx->key())` or `whereKey($ctx->selection)` through the same query scope the table uses and authorize them in the handler; do not trust other row fields the agent sends.
 
 ### Errors
 
