@@ -11,7 +11,7 @@ The full method list for every kind is in the [Fields API reference](/docs/api/f
 
 ## Field kinds by purpose
 
-tbtop/admin v0.5.6 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
+tbtop/admin v0.6.0 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
 
 | Purpose | `S` factory | Value it submits |
 |---|---|---|
@@ -95,7 +95,7 @@ $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
 
 **Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields), with the rest of the [dynamic form tools](/docs/authoring/forms#dynamic-forms).
 
-**Copy button.** `copyable()` is declared on every field, but at v0.5.6 only the `text` input renders the button. It copies the current value.
+**Copy button.** `copyable()` is declared on every field, but at v0.6.0 only the `text` input renders the button. It copies the current value.
 
 **Escape hatches.** `set('key', $value)` writes a raw option into the field's node and `meta()` a raw node meta key; neither is validated, so a typo ships silently. Use them only for a client option that has no fluent method yet, such as an option read by your own [client component](/docs/extending/client-components).
 
@@ -350,7 +350,7 @@ $s->richtext('description')->label('Description')->translatable(),
 **Tables read the default locale.** In a table, `Column::make('name')->translatable()` shows the default-locale value, falling back to the first non-empty one. See [Tables](/docs/authoring/tables#columns).
 
 <Callout type="warn">
-A `slug` that is not itself translatable cannot derive from a translatable source by its bare name: `fromField('title')` resolves to the whole locale map and produces nothing. Point it at one locale instead, for example `fromField('title.en')`.
+A `slug` that is not itself translatable and derives from a translatable source by its bare name, `fromField('title')`, follows the default content locale. To derive from another locale, name its leaf, for example `fromField('title.uk')`.
 </Callout>
 
 ## Gotchas

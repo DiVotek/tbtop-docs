@@ -55,7 +55,7 @@ The admin is drawn with shadcn-style design tokens: CSS variables such as `--pri
 
 Override only the tokens you change. The rest keep the package values. A palette from a shadcn theme generator works the same way: paste its `:root` and `.dark` value blocks and leave out its `@import` and `@theme inline` lines, which the package already has.
 
-The tokens the package defines at v0.5.6:
+The tokens the package defines at v0.6.0:
 
 | Token | Used for |
 |---|---|
@@ -71,10 +71,10 @@ The tokens the package defines at v0.5.6:
 | `--border`, `--input`, `--ring` | Borders, input borders, focus rings |
 | `--chart-1` … `--chart-5` | Chart series |
 | `--chart-success`, `--chart-warning`, `--chart-danger` | Trend lines on stat cards |
-| `--sidebar`, `--sidebar-foreground`, `--sidebar-primary`, `--sidebar-accent`, `--sidebar-border`, `--sidebar-ring` and their pairs | Defined for shadcn compatibility. The stock shell does not use them at v0.5.6. |
+| `--sidebar`, `--sidebar-foreground`, `--sidebar-primary`, `--sidebar-accent`, `--sidebar-border`, `--sidebar-ring` and their pairs | Defined for shadcn compatibility. The stock shell does not use them at v0.6.0. |
 
 <Callout type="info" title="The sidebar follows --background">
-  Changing `--sidebar` has no visible effect at v0.5.6: the stock sidebar uses `--background` and `--border`, and the active item uses `--accent`. The sidebar's frame is not part of the chrome tree, and at v0.5.6 no token or panel setting tints it separately: the frame takes `--background`.
+  Changing `--sidebar` has no visible effect at v0.6.0: the stock sidebar uses `--background` and `--border`, and the active item uses `--accent`. The sidebar's frame is not part of the chrome tree, and at v0.6.0 no token or panel setting tints it separately: the frame takes `--background`.
 </Callout>
 
 ### Radius
@@ -273,7 +273,7 @@ function Logo({ options }: RenderProps<LogoOptions>) {
 registerBlock<"app:logo", LogoOptions>({ kind: "app:logo", behavior: "leaf", render: Logo });
 ```
 
-The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.5.6 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
+The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.6.0 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
 
 ## Styling blocks from PHP
 
