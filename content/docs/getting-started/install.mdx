@@ -160,7 +160,7 @@ resolve: async (name) => {
 
 - **Only one Inertia app per page load.** The admin bundle resolves only `admin/*` components. An Inertia visit from an admin page to a page rendered by your main `app.tsx`, or the other way round, fails in the browser. Keep screens that admin users reach inside the panel, including the login page. Redirects that leave the panel should be full page loads.
 - **Classes written in PHP need an `@source` line.** If your pages live outside `app/`, or a package of yours writes admin classes, add one `@source` line per directory to `resources/css/admin.css`. Without it, those classes compile to nothing.
-- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.5.6 ships no facade class behind it. Everything is configured through the panel class and page classes.
+- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.6.0 ships no facade class behind it. Everything is configured through the panel class and page classes.
 
 ## Next steps
 

@@ -36,7 +36,8 @@ and sends: `'form'` (the enclosing form's values), `'row'` (the table row) or
 | `$ctx->request` | the Laravel request |
 | `$ctx->form` | form values, validated against the form's rules when `needs` has `'form'` |
 | `$ctx->row` | the row payload when `needs` has `'row'` |
-| `$ctx->selection` | a list of row keys when `needs` has `'selection'` |
+| `$ctx->selection` | a list of row `_key` values when `needs` has `'selection'` |
+| `$ctx->key()` | the clicked row's record key for `whereKey()` / `find()`; reads `_key`, falls back to `id` on custom table payloads. `null` when `needs` has no `'row'` |
 | `$ctx->params` | route parameters; server route values override anything the client sends, but treat extra keys as client input |
 
 The closure returns an `Effects` instance: a list of instructions for the client.
@@ -48,15 +49,14 @@ use Tbtop\Admin\Actions\Effects;
 $s->action('archive')
     ->label('Archive')
     ->handle(function (ActionCtx $ctx): Effects {
-        $order = Order::query()->whereKey($ctx->row['id'] ?? null)->firstOrFail();
+        $order = Order::query()->whereKey($ctx->key())->firstOrFail();
         $order->update(['archived_at' => now()]);
 
         return Effects::make()->notify('Order archived')->refreshTable();
     }, needs: ['row']);
 ```
 
-`$ctx->row` and `$ctx->selection` come from the browser. Treat them as ids to look up,
-never as trusted record data. Load the model again and check its state in the handler.
+`$ctx->row`, `$ctx->selection` and `$ctx->key()` come from the client. Table rows always carry `_key` (the raw record key); a visible `id` column may be formatted and is not safe to load by. Use `$ctx->key()` or `$ctx->selection` with `whereKey()`, never other row fields, and load the model again before you trust its state.
 
 ## Links
 
@@ -96,7 +96,7 @@ $s->table('orders')
             ->hiddenIf('status', '!=', 'paid')
             ->handle(fn (ActionCtx $ctx): Effects => Effects::make()->notify('Shipped')->refreshTable(), needs: ['row']),
         DeleteAction::make($s, using: function (ActionCtx $ctx): void {
-            Order::query()->whereKey($ctx->row['id'] ?? null)->delete();
+            Order::query()->whereKey($ctx->key())->delete();
         }),
     ])
     ->bulkActions([
@@ -161,7 +161,7 @@ $s->table('orders')->rowActions([
                     ->handle(fn (): Effects => Effects::make()->closeModal()),
                 $s->action('refundSubmit')->label('Refund')->color('danger')->handle(
                     function (ActionCtx $ctx): Effects {
-                        $order = Order::query()->whereKey($ctx->row['id'] ?? null)->firstOrFail();
+                        $order = Order::query()->whereKey($ctx->key())->firstOrFail();
 
                         try {
                             app(Refunds::class)->issue($order, $ctx->form['amount'], $ctx->form['reason']);
@@ -253,7 +253,7 @@ $s->table('tickets')->rowActions([
             $s->actionsRow([/* save action with needs: ['row', 'form'] */]),
         ]))
         ->query(fn (ActionCtx $ctx): array => [
-            'assignee_id' => Ticket::query()->whereKey($ctx->row['id'] ?? null)->value('assignee_id'),
+            'assignee_id' => Ticket::query()->whereKey($ctx->key())->value('assignee_id'),
         ], needs: ['row']),
 ]);
 ```
@@ -388,6 +388,8 @@ load the record. `when(false)` also removes an action, with the same 404.
   the form is invalid. Only declared keys reach the closure.
 - `custom('handlerName', $params)` calls a client function registered with
   `defineCustomAction`. See [Client components](/docs/extending/client-components).
+- `mcp(false)` hides the action from the panel's [MCP endpoint](/docs/integrations/mcp):
+  an agent cannot list or run it. The browser UI does not change.
 - `keybinding('mod+s')`, `badge()`, `color()`, `size()`, `outlined()` and `link()`
   change how the trigger looks and behaves.
 

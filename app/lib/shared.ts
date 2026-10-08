@@ -15,7 +15,7 @@ export const gitConfig = {
  * The tbtop/admin release these docs describe. The only place this pins —
  * bump it here, then rerun `npm run sync:api` to refresh content/docs/api.
  */
-export const PINNED_TAG = "v0.5.6";
+export const PINNED_TAG = "v0.6.0";
 
 /**
  * The tbtop/spatie-media-library release content/docs/packages/media-library.mdx

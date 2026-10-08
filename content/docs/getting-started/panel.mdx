@@ -109,6 +109,8 @@ With the defaults, every page requires a user signed in on the `web` guard. Noth
 
 A page can also replace the panel's stack for itself and its endpoints with `public static function middleware(PanelConfig $panel): ?array`. A login page uses this to stay public. See [Authentication](/docs/getting-started/authentication).
 
+A panel's [MCP endpoint](/docs/integrations/mcp) does not run this stack. If you enable it, repeat the panel-wide checks, such as `can:access-admin`, in `mcp()`. Gates per page and per action apply to it as they are.
+
 ## The shell
 
 These settings change the chrome around every page. None of them is required. Colours, fonts, the logo and the rest of the admin's look are covered in [Customize the panel](/docs/getting-started/customization).

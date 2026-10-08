@@ -72,7 +72,7 @@ class ProductsIndexPage extends Page
 
 Kind methods are exclusive: chaining two keeps only the last. Formatting happens on the server, so `date()` and `money()` are applied before the value reaches the browser. `formatUsing(fn ($value, $row) => ...)` replaces the kind's formatting entirely — it does not layer on top.
 
-**Visibility.** `hidden()` drops the column from the table: it is not rendered, not projected and cannot be edited inline. `visible(fn () => ...)` makes that decision per request. Neither keeps the value out of the browser. For an Eloquent row the response is the model's full `toArray()` with the declared columns overwritten, so a hidden attribute, and a whole eager-loaded relation behind a dotted column, still travel in the row JSON. To withhold a value, keep it out of the row: `select()` only the columns you need in `query()`, use the model's `$hidden` or `makeHidden()`, or narrow the eager load (`with('customer:id,name')`). `toggleable()` ships the column and lets the user hide it from the column menu; `toggleable(true, true)` starts it hidden.
+**Visibility.** `hidden()` drops the column from the table: it is not rendered, not projected, not sent and cannot be edited inline. `visible(fn () => ...)` makes that decision per request. A row carries an allowlist, never the full database row: the record key (under its own name and again as `_key`), the visible declared columns, the `groups()` column and the row meta (`_recordUrl`, tooltips, descriptions). Undeclared attributes and eager-loaded relations stay on the server. So a row-action URL template, a row-action `hiddenIf()` / `disabledIf()` or a `needs: ['row']` handler sees only those fields: declare a column for anything else, or load the record by `$ctx->key()` in the handler. `toggleable()` ships the column and lets the user hide it from the column menu; `toggleable(true, true)` starts it hidden.
 
 **Translatable values.** `->translatable()` on a column reads a locale map and shows the default content locale, falling back to the first non-empty locale. See [translatable fields](/docs/authoring/fields#translatable-fields).
 
@@ -256,7 +256,7 @@ use Tbtop\Admin\Dsl\Actions\DeleteAction;
 ->rowActions([
     $s->action('open')->label('Open')->url('/admin/orders/{row.id}'),
     DeleteAction::make($s, using: function (ActionCtx $ctx): void {
-        Order::whereKey($ctx->row['id'] ?? null)->delete();
+        Order::whereKey($ctx->key())->delete();
     }),
 ])
 ->bulkActions([
@@ -300,7 +300,7 @@ The model is loaded through the table's own `query()`, so a row outside that que
 ## Gotchas
 
 - **`money()` expects minor units.** Store 1999, not 19.99. For a decimal column, use `number(2)` and a `suffix()`.
-- **Hidden columns are not a security boundary.** `hidden()`, `visible()` and `toggleable(true, true)` only decide what renders; an Eloquent row still carries every attribute from `toArray()`. Leave sensitive values out with `select()`, `$hidden`/`makeHidden()` or a constrained eager load.
+- **Toggleable columns still ship.** `toggleable(true, true)` only starts a column hidden in the menu; its value is in every row. `hidden()` and `visible(false)` keep it on the server. Re-read anything you authorize on from the record, since `$ctx->row` comes from the client.
 - **`filterUsing()` receives the raw query-string value.** The kind's casting applies only to the default mapping, so a boolean filter's closure can get the string `"false"`, which is truthy. Cast it yourself, for example with `filter_var($value, FILTER_VALIDATE_BOOLEAN)`.
 - **Row values come from the browser.** In a row action, `$ctx->row` is the row as the client sent it. Look the record up by its key and check access there; do not trust other fields in it.
 - **`refreshTable()` with no name** refreshes the table the action sits in, or every table on the page when it is outside one. Name the table when an action on one table should refresh another.

@@ -131,7 +131,7 @@ class PostsPage extends Page
                 ->recordUrl(fn (Post $post): string => "/admin/posts/{$post->id}/edit")
                 ->rowActions([
                     DeleteAction::make($s, using: function (ActionCtx $ctx): void {
-                        Post::whereKey($ctx->row['id'] ?? null)->delete();
+                        Post::whereKey($ctx->key())->delete();
                     }),
                 ])
                 ->toNode(),

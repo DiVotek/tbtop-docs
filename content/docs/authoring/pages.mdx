@@ -113,6 +113,8 @@ public static function middleware(PanelConfig $panel): ?array
 }
 ```
 
+Keep access rules in `can()`, not in `middleware()`. The panel's [MCP endpoint](/docs/integrations/mcp) enforces `can()` but does not run page middleware.
+
 Pair a public page with a `layout()` that returns `'center'` to drop the sidebar and header. Any value other than `'admin'` or `'center'` throws.
 
 ### Route parameters
