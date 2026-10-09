@@ -92,6 +92,7 @@ $s->form('product', [
 
             MediaGalleryOptions::saveOrder($product, 'photos', $ids);
             // Optional and irreversible: delete media the editor removed from the field.
+            // A cleared field arrives as null, becomes [] and deletes the whole collection.
             MediaGalleryOptions::pruneUnselected($product, 'photos', $ids);
         }
 
@@ -154,6 +155,7 @@ These settings are global. The field has no per-field override for format, accep
 What v0.3.0 does not do:
 
 - **Nothing is saved by the field.** Order and deletions reach the collection only through `saveOrder()` and `pruneUnselected()` in your handler; uploads are the exception, see above.
+- **Abandoned uploads stay.** A file uploaded in a dialog that is cancelled, or in a form that is never saved, remains in the collection; nothing removes it until a later save runs `pruneUnselected()`.
 - **No shared library.** Only the bound record's collection is listed. For files reused across records, use the core [`media` field](/docs/authoring/fields#files-and-media).
 - **No cropping, alt text or custom properties.** Edit those through spatie's API in your own code.
 - **The dialog lists at most `per_page` files, without pagination.** Search narrows by name. Picked files beyond that cap still show as tiles.
