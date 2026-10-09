@@ -21,7 +21,7 @@ export const PINNED_TAG = "v0.6.0";
  * The tbtop/spatie-media-library release content/docs/packages/media-library.mdx
  * describes. The package releases independently of tbtop/admin.
  */
-export const MEDIA_LIBRARY_TAG = "v0.1.2";
+export const MEDIA_LIBRARY_TAG = "v0.3.0";
 
 // Own Umami site, not tbtop.dev's; `domains` keeps dev and previews out of stats.
 export const umami = {
