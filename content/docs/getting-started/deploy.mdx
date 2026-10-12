@@ -114,6 +114,6 @@ php artisan octane:reload       # only if you run Octane
 - Guests are redirected to the panel's login page with `redirectGuestsTo()` (see [Authentication](/docs/getting-started/authentication#send-guests-to-the-login-page)).
 - The user model's `$hidden` covers every attribute that must not reach the browser, because the panel shares the signed-in user as `tbtop.user`.
 - The panel is limited to staff, not merely to signed-in users. See [access control](/docs/getting-started/panel#access-control).
-- If you wrote your own login page instead of publishing the package's, it is rate-limited. The published pages throttle for you.
+- If you wrote your own login page instead of publishing the package's, its submit handler is rate-limited with Laravel's `RateLimiter`. The published pages throttle for you.
 - `media.url_import.allowed_hosts` in `config/tbtop-admin.php` is set if editors should import media only from known hosts. Empty means any host that passes the built-in SSRF guard.
 - `media.accept` and `media.max_size` match what editors should be able to upload. `max_size` is in kilobytes. Uploaded SVGs are sanitized on the server, and HTML files are always refused.

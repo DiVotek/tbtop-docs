@@ -199,8 +199,8 @@ If the session has already expired, the logout request fails the CSRF check with
 
 The package shares the panel guard's user as the `tbtop.user` prop: the model serialized with `toArray()`, or `null` for a guest. Panels with different guards each see their own user. The user menu shows `name`, and falls back to the part of `email` before the `@`.
 
-<Callout type="warn" title="$hidden is the only filter">
-  Every attribute the model does not list in `$hidden` reaches every page's HTML. Hide anything you would not send to the browser.
+<Callout type="warn" title="The model's serialization is the only filter">
+  Whatever the model's `toArray()` returns reaches every page's HTML. The package removes nothing on top of it, so list sensitive attributes in `$hidden` (or limit the model with `$visible`).
 </Callout>
 
 The client reads the user only from `tbtop.user`. An `auth.user` prop shared from your own Inertia middleware is no longer read, so you can remove it if nothing else in your app uses it. A custom component that reads the user gets `AuthUser`, typed as `{ id: string | number; email: string; name?: string }` plus any other serialized attributes.
