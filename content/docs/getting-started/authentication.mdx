@@ -100,7 +100,7 @@ Override a hook in the published subclass. The login page has the most:
 
 `ResetPasswordPage` adds `passwordRules()`, which defaults to `['required', 'confirmed', Password::defaults()]`. `ForgotPasswordPage` has only `view()`.
 
-Sign in with a username instead of an email:
+Let only active accounts sign in. Every key besides `password` becomes a condition on the user query:
 
 ```php title="app/Admin/Pages/Auth/LoginPage.php"
 use Tbtop\Admin\Actions\ActionCtx;
@@ -109,12 +109,12 @@ class LoginPage extends \Tbtop\Admin\Auth\LoginPage
 {
     protected function credentials(ActionCtx $ctx): array
     {
-        return ['username' => $ctx->form['email'], 'password' => $ctx->form['password']];
+        return [...parent::credentials($ctx), 'is_active' => true];
     }
 }
 ```
 
-The throttle key follows `credentials()`, so it changes with it.
+The throttle key uses the first value in `credentials()` other than `password`, so keep the login field first. To sign in by something other than email, also rebuild `view()` (see [Rebuild the screen](#rebuild-the-screen)): the default form's field is named `email` and validated as an email address.
 
 ### Add a second factor
 
