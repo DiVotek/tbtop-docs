@@ -137,7 +137,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 })
 ```
 
-The panel also reads the signed-in user from a shared `auth.user` prop. Without it, the user menu (logout, language switcher) does not render. [Authentication](/docs/getting-started/authentication) shows what to share.
+The package shares the signed-in user itself, as `tbtop.user`, so the user menu (logout, language switcher) needs nothing from this middleware. To add sign-in and password reset pages, see [Authentication](/docs/getting-started/authentication).
 
 ## Render the 404 page
 
@@ -165,5 +165,5 @@ resolve: async (name) => {
 ## Next steps
 
 - [Register a panel](/docs/getting-started/panel): the class that owns the prefix, the guard and the pages.
-- [Authentication](/docs/getting-started/authentication): the package ships no login backend, so this page shows how to wire one.
+- [Authentication](/docs/getting-started/authentication): publish the sign-in and password reset pages with `admin:install --auth`.
 - [Write your first page](/docs/getting-started/first-page): a table, a create form and an edit form, end to end.

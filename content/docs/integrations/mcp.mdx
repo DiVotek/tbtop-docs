@@ -239,7 +239,7 @@ class LoginPage extends Page
 
 Both are server-only. The browser UI does not change, and nothing about them reaches the wire.
 
-Every server action is an executable, including interface plumbing such as a modal's Cancel or Close handler, or a quick-create form next to the full create page. Mark those `->mcp(false)`: the agent chooses from the list, and every entry it does not need costs it context. Public pages, such as a login page or a 2FA challenge, stay listed until you hide them.
+Every server action is an executable, including interface plumbing such as a modal's Cancel or Close handler, or a quick-create form next to the full create page. Mark those `->mcp(false)`: the agent chooses from the list, and every entry it does not need costs it context. The published [auth pages](/docs/getting-started/authentication) are hidden already. Other public pages, such as a 2FA challenge you wrote, stay listed until you hide them.
 
 Some things are excluded automatically, and `search` lists them under `excluded` with the reason:
 

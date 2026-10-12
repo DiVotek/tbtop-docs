@@ -102,7 +102,7 @@ public static function can(): ?string
 }
 ```
 
-`middleware()` replaces the panel's auth layer for the page and its whole endpoint cluster. Returning `['web']` makes a page public inside an authenticated panel, which is how a login screen is built. Spread `$panel->authStack()` to add middleware instead of replacing it:
+`middleware()` replaces the panel's auth layer for the page and its whole endpoint cluster. Returning `['web']` makes a page public inside an authenticated panel, which is how the [auth pages](/docs/getting-started/authentication) stay reachable to guests. Spread `$panel->authStack()` to add middleware instead of replacing it:
 
 ```php
 use Tbtop\Admin\Panels\PanelConfig;
