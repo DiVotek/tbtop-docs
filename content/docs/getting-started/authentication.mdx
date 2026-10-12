@@ -60,7 +60,7 @@ When a guest opens a protected page, Laravel's `auth` middleware redirects to th
 })
 ```
 
-`LoginPage::url()` returns the login page of the panel the request belongs to, so one line serves every panel. Outside a panel it returns `null`, and the fallback applies. If your public site has its own `login` route, return it as the fallback instead, so site guests keep landing there:
+`LoginPage::url()` returns the login page of the panel the request belongs to, so one line serves every panel. Outside a panel it returns `null`, and the fallback applies. `'/admin/login'` suits an app where only the panel needs sign-in; use your panel's prefix if it is not `admin`. If your public site has its own `login` route, return it as the fallback instead, so site guests keep landing there:
 
 ```php
 $middleware->redirectGuestsTo(fn () => \Tbtop\Admin\Auth\LoginPage::url() ?? route('login'));
@@ -137,12 +137,13 @@ class LoginPage extends \Tbtop\Admin\Auth\LoginPage
         Auth::guard(static::panel()->guard())->logout();
         $ctx->request->session()->put('auth.2fa.user_id', $user->getAuthIdentifier());
 
-        return route('tbtop.admin.two-factor-challenge-page', absolute: false);
+        // Route names are tbtop.{panel id}.{kebab-cased class name}.
+        return route('tbtop.'.static::panel()->id().'.two-factor-challenge-page', absolute: false);
     }
 }
 ```
 
-The challenge page verifies the code, then loads the parked user and signs them in on the panel's guard with `Auth::guard(...)->login($user)`. The package ships no 2FA backend, so `hasTwoFactorEnabled()` and the code check are yours.
+The challenge page verifies the code, then loads the parked user, signs them in on the panel's guard with `Auth::guard(...)->login($user)`, calls `$request->session()->regenerate()` so the session id changes at sign-in, and forgets the parked id. The package ships no 2FA backend, so `hasTwoFactorEnabled()` and the code check are yours.
 
 ### Rebuild the screen
 
