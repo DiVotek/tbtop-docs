@@ -3,7 +3,7 @@ title: "Authentication"
 description: "Publish the sign-in and password reset pages, send guests to them, and rely on the logout route and signed-in user the package provides."
 ---
 
-Every panel page runs behind `auth:{guard}`. The package handles the parts that only make sense inside a panel:
+Every panel page runs behind `auth:{guard}`, except pages that replace their middleware to stay public, such as the auth pages below. The package handles the parts that only make sense inside a panel:
 
 - **Sign-out.** Every panel answers `POST {prefix}/logout`, which the user menu posts to.
 - **The signed-in user.** The panel's guard user is shared as the `tbtop.user` Inertia prop, which the header's user menu reads.
@@ -204,7 +204,7 @@ The package shares the panel guard's user as the `tbtop.user` prop: the model se
   Whatever the model's `toArray()` returns reaches every page's HTML. The package removes nothing on top of it, so list sensitive attributes in `$hidden` (or limit the model with `$visible`).
 </Callout>
 
-The client reads the user only from `tbtop.user`. An `auth.user` prop shared from your own Inertia middleware is no longer read, so you can remove it if nothing else in your app uses it. A custom component that reads the user gets `AuthUser`, typed as `{ id: string | number; email: string; name?: string }` plus any other serialized attributes.
+The client reads the user only from `tbtop.user`. An `auth.user` prop shared from your own Inertia middleware is no longer read, so you can remove it if nothing else in your app uses it. A custom component that reads the user gets `AuthUser`, typed as `{ id: string | number; email: string; name?: string }` plus any other serialized attributes. The type assumes `email` is serialized, so keep it out of `$hidden`.
 
 ## What stays yours
 

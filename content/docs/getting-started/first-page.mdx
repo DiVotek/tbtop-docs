@@ -154,7 +154,7 @@ What each part does:
 
 ## Make it the landing page
 
-`/admin` redirects to the first registered page with a static path. Discovered pages register in alphabetical class-name order, so with discovery alone the root goes to whichever static page sorts first, such as `/admin/posts/new` (`PostCreatePage` sorts before `PostsPage`). The published auth pages are never picked. Declare the page you want users to land on first in the panel's `pages()`:
+`/admin` redirects to the first registered page with a static path. Discovered pages register in alphabetical class-name order, so with discovery alone the root goes to whichever static page sorts first, such as `/admin/posts/new` (`PostCreatePage` sorts before `PostsPage`). The published auth pages are never picked (see [Identity and routing](/docs/getting-started/panel#identity-and-routing)). Declare the page you want users to land on first in the panel's `pages()`:
 
 ```php
 // app/Admin/AdminPanel.php
