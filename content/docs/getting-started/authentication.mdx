@@ -56,14 +56,14 @@ When a guest opens a protected page, Laravel's `auth` middleware redirects to th
 
 ```php title="bootstrap/app.php"
 ->withMiddleware(function (Middleware $middleware): void {
-    $middleware->redirectGuestsTo(fn () => \Tbtop\Admin\Auth\LoginPage::url() ?? '/admin/login');
+    $middleware->redirectGuestsTo(fn () => \Tbtop\Admin\Auth\LoginPage::currentUrl() ?? '/admin/login');
 })
 ```
 
-`LoginPage::url()` returns the login page of the panel the request belongs to, so one line serves every panel. Outside a panel it returns `null`, and the fallback applies. `'/admin/login'` suits an app where only the panel needs sign-in; use your panel's prefix if it is not `admin`. If your public site has its own `login` route, return it as the fallback instead, so site guests keep landing there:
+`LoginPage::currentUrl()` returns the login page of the panel the request belongs to, so one line serves every panel. Outside a panel it returns `null`, and the fallback applies. `'/admin/login'` suits an app where only the panel needs sign-in; use your panel's prefix if it is not `admin`. If your public site has its own `login` route, return it as the fallback instead, so site guests keep landing there:
 
 ```php
-$middleware->redirectGuestsTo(fn () => \Tbtop\Admin\Auth\LoginPage::url() ?? route('login'));
+$middleware->redirectGuestsTo(fn () => \Tbtop\Admin\Auth\LoginPage::currentUrl() ?? route('login'));
 ```
 
 ## What the pages do
