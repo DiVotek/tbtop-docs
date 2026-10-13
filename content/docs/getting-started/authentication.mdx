@@ -143,7 +143,7 @@ class LoginPage extends \Tbtop\Admin\Auth\LoginPage
 }
 ```
 
-The challenge page verifies the code, then loads the parked user, signs them in on the panel's guard with `Auth::guard(...)->login($user)`, calls `$request->session()->regenerate()` so the session id changes at sign-in, and forgets the parked id. The package ships no 2FA backend, so `hasTwoFactorEnabled()` and the code check are yours.
+The challenge page verifies the code, then loads the parked user, signs them in on the panel's guard with `Auth::guard(...)->login($user)`, calls `$request->session()->regenerate()` so the session id changes at sign-in, and forgets the parked id. Rate-limit the code check with Laravel's `RateLimiter` the way the login page does, because a short code is quick to guess. The package ships no 2FA backend, so `hasTwoFactorEnabled()` and the code check are yours.
 
 ### Rebuild the screen
 
