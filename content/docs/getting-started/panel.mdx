@@ -88,6 +88,13 @@ Discovery order is alphabetical, so two parameterized paths that overlap (say `p
 
 In production, cache the discovery index. See [Deploy](/docs/getting-started/deploy).
 
+The index is read in every environment, not only in production. If a page you just added answers 404, or a renamed one keeps its old URL, an index or route cache built earlier (by a deploy script run locally, or an `artisan` command copied from Deploy) is serving the old page list. Clear both:
+
+```bash
+php artisan tbtop:clear-cached-pages
+php artisan route:clear
+```
+
 ## Access control
 
 With the defaults, every page requires a user signed in on the `web` guard. Nothing else is checked. If your app has non-staff users on the same guard, customers included, they can open the panel. Pick one of these:

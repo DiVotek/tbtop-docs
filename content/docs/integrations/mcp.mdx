@@ -214,7 +214,7 @@ The agent is trusted to act for its user; what it reads and what it is sent are 
 
 - **It has the user's whole reach.** A token can do everything its user can do in the UI, and every `query` row and `search` value enters the context of the agent's model provider. When the full admin role is too much, give agents a dedicated, least-privileged user or role.
 - **One token per client, with an expiry.** Set `sanctum.expiration` and revoke a client's token when the client goes away.
-- **Records can carry instructions.** A customer message or a product description reaches the model as tool output and may tell it to run something. Keep **destructive confirmation on** in the MCP client for every `execute` call: the package always marks `execute` destructive so the client asks the user each time, and "always allow" removes that safety net. Hide actions agents should never run with `->mcp(false)` and keep irreversible ones behind `->authorize()` for roles agents do not get.
+- **Records can carry instructions.** A customer message or a product description reaches the model as tool output and may tell it to run something. Whether the user confirms an `execute` call is the MCP client's decision, not the package's: the package marks `execute` destructive, and the client chooses what to do with that hint. Use a client that asks before destructive calls, keep that confirmation on, and do not set `execute` to "always allow". Hide actions agents should never run with `->mcp(false)` and keep irreversible ones behind `->authorize()` for roles agents do not get.
 - **Rows and selections are client input.** Re-load and authorize records in the handler, as [Running actions and forms](#running-actions-and-forms) shows.
 
 ## Curate what the agent sees
