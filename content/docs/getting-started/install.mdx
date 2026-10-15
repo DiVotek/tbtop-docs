@@ -32,14 +32,14 @@ The PHP package and the npm package describe one wire format between them, so ke
 
 The service provider (`Tbtop\Admin\AdminServiceProvider`) is auto-discovered. You do not register it by hand.
 
-If your app does not have them yet, install the client-side build dependencies the admin entry uses. A fresh Laravel skeleton already lists `vite`, `laravel-vite-plugin`, `tailwindcss` and `@tailwindcss/vite`, so the React side is usually all that is missing:
+If your app does not have them yet, install the client-side build dependencies the admin entry uses. A fresh Laravel skeleton already lists `vite`, `laravel-vite-plugin`, `tailwindcss` and `@tailwindcss/vite`, so the React side is usually all that is missing. On Vite 8, which the Laravel 13 skeleton ships:
 
 ```bash
 npm install react@^19 react-dom@^19 @inertiajs/react@^3
 npm install -D @vitejs/plugin-react@^6
 ```
 
-Pick the plugin majors that match the Vite in your `package.json`:
+On Vite 7 (the Laravel 12 skeleton), install `@vitejs/plugin-react@^5` instead. The plugin majors that match each Vite:
 
 | Your Vite | Laravel skeleton that ships it | `@vitejs/plugin-react` | `laravel-vite-plugin` |
 |---|---|---|---|
