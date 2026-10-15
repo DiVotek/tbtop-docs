@@ -273,7 +273,7 @@ function Logo({ options }: RenderProps<LogoOptions>) {
 registerBlock<"app:logo", LogoOptions>({ kind: "app:logo", behavior: "leaf", render: Logo });
 ```
 
-The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.6.0 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
+The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.7.0 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
 
 ## Styling blocks from PHP
 
