@@ -39,14 +39,20 @@ npm install react@^19 react-dom@^19 @inertiajs/react@^3
 npm install -D @vitejs/plugin-react@^6
 ```
 
-Pick the `@vitejs/plugin-react` major that matches the Vite in your `package.json`:
+Pick the plugin majors that match the Vite in your `package.json`:
 
-| Your Vite | Laravel skeleton that ships it | Install |
-|---|---|---|
-| 8 | 13 | `@vitejs/plugin-react@^6` |
-| 7 | 12 | `@vitejs/plugin-react@^5` |
+| Your Vite | Laravel skeleton that ships it | `@vitejs/plugin-react` | `laravel-vite-plugin` |
+|---|---|---|---|
+| 8 | 13 | `^6` | `^3` |
+| 7 | 12 | `^5` | `^2` |
 
-Without a version, npm installs the latest plugin, which requires Vite 8, and on a Vite 7 app it stops with `ERESOLVE unable to resolve dependency tree`. The same holds for `laravel-vite-plugin` (3.x requires Vite 8): if your app already has it, leave its version alone rather than reinstalling it bare. Do not reach for `--legacy-peer-deps` to get past the error. It only silences the check and leaves a plugin built for a Vite you do not have.
+If your app has no Vite or Tailwind setup at all, add the rest in one go, with the majors from the row for your Vite (Vite 8 shown):
+
+```bash
+npm install -D vite@^8 laravel-vite-plugin@^3 @vitejs/plugin-react@^6 tailwindcss@^4 @tailwindcss/vite@^4
+```
+
+Without a version, npm installs the latest plugin, which requires Vite 8, and on a Vite 7 app it stops with `ERESOLVE unable to resolve dependency tree`. That is also why an app that already has `laravel-vite-plugin` should leave its version alone rather than reinstall it bare. Do not reach for `--legacy-peer-deps` to get past the error. It only silences the check and leaves a plugin built for a Vite you do not have.
 
 The client depends on `@inertiajs/react` 3. If your app is still on `@inertiajs/react` 2, upgrade it first. Otherwise npm installs a second copy for the client, your `admin.tsx` boots Inertia from one copy while the client reads page data from the other, and the panel does not render.
 
