@@ -1,6 +1,7 @@
 import { createGetUrl } from "fumadocs-core/source";
 
 export const appName = "Tabletop Docs";
+export const siteUrl = "https://docs.tbtop.dev";
 export const docsRoute = "/docs";
 export const docsImageRoute = "/og/docs";
 export const docsContentRoute = "/llms.mdx/docs";
