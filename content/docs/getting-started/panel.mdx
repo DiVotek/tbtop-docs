@@ -63,9 +63,7 @@ An empty id throws when the panel registry is built, and so does a second panel 
   The id feeds every route name, and every route name is part of the panel's contract. `route()` calls, redirects and tests that name `tbtop.admin.*` break when the id changes. Choose the id once. The prefix can change more freely. Leave `prefix()` unset and it follows the id.
 </Callout>
 
-The panel root (`/admin`, also the logo link) redirects to the first registered page whose path has no route parameters. Declare your landing page first in `pages()`: explicit pages come before discovered ones, and discovered pages follow in alphabetical class-name order. The redirect does not look at page middleware, so a public page such as a login page can be picked if it comes first. If a page's `path()` is the empty string, that page owns the root and no redirect is registered.
-
-A login page whose `middleware()` returns `['web']` without `guest` stays reachable to signed-in users, who see the form again. To send them into the panel instead, add `'guest'` to its stack (`'guest:{guard}'` when the panel's `guard()` is not the default) and scope `redirectUsersTo()` in `bootstrap/app.php` the way [Authentication](/docs/getting-started/authentication#send-guests-to-it) scopes `redirectGuestsTo()`, because it changes the redirect for every `guest` route in the app: return your landing page's URL, such as `/admin/posts`, for `$request->is('admin', 'admin/*')`, not `/admin`, which can redirect back to the login page.
+The panel root (`/admin`, also the logo link) redirects to the first registered page whose path has no route parameters. Declare your landing page first in `pages()`: explicit pages come before discovered ones, and discovered pages follow in alphabetical class-name order. Auth pages, the subclasses of `Tbtop\Admin\Auth\AuthPage` that `admin:install --auth` publishes, are never picked. Any other public page can be, because the redirect does not look at page middleware. If a page's `path()` is the empty string, that page owns the root and no redirect is registered.
 
 ## Pages: explicit or discovered
 
