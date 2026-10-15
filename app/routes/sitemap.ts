@@ -1,8 +1,17 @@
 import { siteUrl } from "@/lib/shared";
 import { source } from "@/lib/source";
 
+const XML_ENTITIES: Record<string, string> = {
+	"&": "&amp;",
+	"<": "&lt;",
+	">": "&gt;",
+	'"': "&quot;",
+	"'": "&apos;",
+};
+
 function urlEntry(path: string): string {
-	return `<url><loc>${siteUrl}${path}</loc></url>`;
+	const loc = `${siteUrl}${path}`.replace(/[&<>"']/g, (char) => XML_ENTITIES[char] ?? char);
+	return `<url><loc>${loc}</loc></url>`;
 }
 
 export function loader() {
