@@ -110,6 +110,29 @@ The ability check only holds for token requests. `auth:sanctum` first tries Sanc
 
 The user model needs Sanctum's `HasApiTokens` trait. Where the user gets the token, such as a profile page that creates and revokes it, is up to your app.
 
+## Check it locally
+
+Before wiring a client, issue a token and call the endpoint by hand. In `php artisan tinker`:
+
+```php
+User::where('email', 'admin@example.com')->first()
+    ->createToken('local-test', ['tbtop-mcp'])->plainTextToken;
+// "1|…"
+```
+
+Then send an MCP `initialize` with that token:
+
+```bash
+export TBTOP_TOKEN='1|…'
+curl -s http://127.0.0.1:8000/admin/mcp \
+  -H "Authorization: Bearer $TBTOP_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+A JSON-RPC result naming "Tabletop Admin" means the route, the auth stack and the token work. Without the header the endpoint answers `401`; with a token that lacks the `tbtop-mcp` ability, `403`. A `500` with "Target class [abilities] does not exist" means the alias from [Tokens with Sanctum](#tokens-with-sanctum) is not registered.
+
 ## Connect an agent
 
 Point the MCP client at the endpoint with the token as a bearer header. With Claude Code:
