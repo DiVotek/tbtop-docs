@@ -254,7 +254,6 @@ use App\Models\Customer;
 use App\Models\Order;
 use Tbtop\Admin\Actions\ActionCtx;
 use Tbtop\Admin\Actions\Effects;
-use Tbtop\Admin\Dsl\Actions\FormActions;
 use Tbtop\Admin\Dsl\Color;
 use Tbtop\Admin\Dsl\Column;
 use Tbtop\Admin\Dsl\Node;
@@ -318,14 +317,15 @@ class SalesPage extends Page
                                     ['value' => 'pro', 'label' => 'Pro'],
                                 ]),
                             ]),
-                            FormActions::save($s, 'Add customer'),
-                        ])
-                            ->record(['name' => '', 'email' => '', 'plan' => 'basic'])
-                            ->onSubmit(function (ActionCtx $ctx): Effects {
-                                Customer::create($ctx->form);
+                            $s->actionsRow([
+                                $s->action('addCustomer')->label('Add customer')->color('primary')
+                                    ->handle(function (ActionCtx $ctx): Effects {
+                                        Customer::create($ctx->form);
 
-                                return Effects::make()->notify('Customer added')->resetForm('customer');
-                            }),
+                                        return Effects::make()->notify('Customer added')->resetForm();
+                                    }, needs: ['form']),
+                            ]),
+                        ])->record(['name' => '', 'email' => '', 'plan' => 'basic']),
                     ]),
                     $s->section(['title' => 'Needs attention', 'variant' => 'plain'], [
                         $s->list('attention')->items(fn () => Order::where('status', 'pending')
@@ -350,7 +350,8 @@ What each piece does:
 - The second grid has three columns from `lg`. The orders section spans two of them with a breakpoint-matched `colSpan`; below `lg` both columns stack at full width.
 - The table is a direct child of a card section, so the card is frameless around it.
 - Inside the form, the fields are wrapped in a `grid` because a form stacks its children. `name` spans both columns from `sm`, matching the grid's own breakpoint.
-- The form, the table and the list are independent: the form's submit does not reload the table. Add `->refreshTable('orders')` to the effects when it should. [Composing a page](/docs/authoring/pages#composing-a-page) explains what keeps forms and tables on one page independent.
+- The quick-create button is a `handle()` action with `needs: ['form']`, not an `onSubmit()`: it receives the validated values, and its `resetForm()` clears the form for the next entry. A form's `onSubmit()` cannot do that, because the page reloads and `resetForm()` is ignored there (see [Saving](/docs/authoring/forms#saving)).
+- The form, the table and the list are independent: adding a customer does not reload the table. Add `->refreshTable('orders')` to the effects when it should. [Composing a page](/docs/authoring/pages#composing-a-page) explains what keeps forms and tables on one page independent.
 
 The demo [dashboard](https://demo.tbtop.dev/admin/dashboard) combines a stats grid, charts and content blocks the same way, and the [posts page](https://demo.tbtop.dev/admin/posts) holds two tables on one page.
 
