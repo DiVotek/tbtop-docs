@@ -9,6 +9,8 @@ export const docsContentRoute = "/llms.mdx/docs";
 export const gitConfig = {
 	user: "DiVotek",
 	repo: "tbtop",
+	/** This site's own repo, where the pages under content/docs live. */
+	docsRepo: "tbtop-docs",
 	branch: "main",
 };
 
