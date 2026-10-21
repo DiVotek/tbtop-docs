@@ -63,12 +63,13 @@ Page classes are resolved from the Laravel container, so constructor injection w
 | `subtitle(): ?string` | `null` | Muted line under the heading |
 | `headerActions(S $s): array` | `[]` | Buttons beside the title |
 | `static nav(): ?array` | `null` (not in nav) | Place the page in the menu — see [Navigation](/docs/authoring/navigation) |
-| `static can(): ?string` | `null` | Gate ability required to open the page |
+| `static can(): string\|array\|null` | `null` | Gate ability, or `[ability, Model::class]`, required to open the page |
 | `static middleware(PanelConfig $panel): ?array` | `null` (panel stack) | Replace the auth middleware for this page |
 | `breadcrumbs(): array\|Closure\|null` | `null` (auto) | Override the breadcrumb trail |
 | `layout(): string` | `'admin'` | `'center'` for a chrome-less, centered page |
 | `static slug(): string` | kebab of the class name | Route name of the page and its endpoints |
 | `static isDiscovered(): bool` | `true` | Exclude the class from directory discovery |
+| `static url(array $parameters = [], ?string $panel = null): string` | | Not a hook: returns the page's URL, see [Linking to a page](#linking-to-a-page) |
 
 A heading, a subtitle and a header button together:
 
@@ -113,6 +114,18 @@ public static function middleware(PanelConfig $panel): ?array
 }
 ```
 
+To check a model policy instead, return the ability and the model class. The check becomes `Gate::authorize('viewAny', Post::class)`, which reaches the policy's `viewAny(User $user)`:
+
+```php
+/** @return array{0: string, 1: class-string} */
+public static function can(): array
+{
+    return ['viewAny', Post::class];
+}
+```
+
+A page gate has no record, so it can only ask the class-level abilities (`viewAny`, `create`). Check per-record abilities where the record is loaded, with `Gate::authorize('update', $record)` in `view()` or the handler. [`make:tbtop-resource --policy`](/docs/getting-started/resource-generator#with-a-policy) generates exactly that.
+
 Keep access rules in `can()`, not in `middleware()`. The panel's [MCP endpoint](/docs/integrations/mcp) enforces `can()` but does not run page middleware.
 
 Pair a public page with a `layout()` that returns `'center'` to drop the sidebar and header. Any value other than `'admin'` or `'center'` throws.
@@ -136,7 +149,19 @@ public function view(S $s): Node
 
 A `findOrFail()` miss in `view()` renders a 404 inside the panel chrome. Pages with a parameter in their path never appear in the navigation.
 
-Each page's route is named `tbtop.{panel id}.{slug}`, so a link can be built with `route('tbtop.admin.invoice-edit-page', ['invoice' => $id])` instead of a hard-coded string. Renaming the class changes the default slug; override `slug()` if other code depends on it.
+### Linking to a page
+
+`url()` returns a page's URL from its class, with the panel prefix and the route parameters filled in:
+
+```php
+InvoicesIndexPage::url();                          // /admin/invoices
+InvoiceEditPage::url(['invoice' => $invoice]);     // /admin/invoices/5/edit
+InvoiceEditPage::url(['invoice' => 5], 'billing'); // /billing/invoices/5/edit
+```
+
+The URL is relative. The panel comes from the second argument, else the panel serving the current request, else the only panel that registers the page. When the page is in several panels and none of these applies, `url()` throws and names them. Use it instead of hard-coding the prefix, so links survive a panel moving off `/admin`.
+
+Underneath, each page's route is named `tbtop.{panel id}.{slug}`, so `route('tbtop.admin.invoice-edit-page', ['invoice' => $id])` works too. Renaming the class changes the default slug; override `slug()` if other code depends on it.
 
 ### Breadcrumbs
 
@@ -258,7 +283,7 @@ See it in the demo: the [posts index](https://demo.tbtop.dev/admin/posts) has tw
 
 ## CRUD as a family of pages
 
-A resource is a few ordinary pages that share one field definition. For an `Invoice`:
+A resource is a few ordinary pages that share one field definition. [`make:tbtop-resource`](/docs/getting-started/resource-generator) writes this family from a model's table; this section shows what it is made of. For an `Invoice`:
 
 | Page | `path()` | What it holds |
 |---|---|---|
