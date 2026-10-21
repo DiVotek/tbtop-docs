@@ -74,6 +74,19 @@ Kind methods are exclusive: chaining two keeps only the last. Formatting happens
 
 **Visibility.** `hidden()` drops the column from the table: it is not rendered, not projected, not sent and cannot be edited inline. `visible(fn () => ...)` makes that decision per request. A row carries an allowlist, never the full database row: the record key (under its own name and again as `_key`), the visible declared columns, the `groups()` column and the row meta (`_recordUrl`, tooltips, descriptions). Undeclared attributes and eager-loaded relations stay on the server. So a row-action URL template, a row-action `hiddenIf()` / `disabledIf()` or a `needs: ['row']` handler sees only those fields: declare a column for anything else, or load the record by `$ctx->key()` in the handler. `toggleable()` ships the column and lets the user hide it from the column menu; `toggleable(true, true)` starts it hidden.
 
+**Counting a relation.** There is no `counts()` column method. The table runs your Eloquent query, so add the count there with `withCount()` and show the `{relation}_count` attribute it adds as a plain column:
+
+```php
+$s->table('categories')
+    ->query(fn () => Category::query()->withCount('posts'))
+    ->columns([
+        Column::make('name')->label('Name')->sortable(),
+        Column::make('posts_count')->label('Posts')->align('right')->sortable(),
+    ])
+```
+
+`sortable()` works on the count, since sorting orders by the column name. Do not make it `searchable()`: search filters on that name in SQL, and `posts_count` is not a table column. `withSum()`, `withAvg()` and `withExists()` work the same way.
+
 **Translatable values.** `->translatable()` on a column reads a locale map and shows the default content locale, falling back to the first non-empty locale. See [translatable fields](/docs/authoring/fields#translatable-fields).
 
 **Presentation.** `align()`, `width()`, `wrap()`, `truncate()`, `noWrap()`, `muted()`, `description()`, `tooltip()`, `prefix()`/`suffix()` and `copyable()` adjust a cell without changing its value.
