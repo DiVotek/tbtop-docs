@@ -11,7 +11,7 @@ The full method list for every kind is in the [Fields API reference](/docs/api/f
 
 ## Field kinds by purpose
 
-tbtop/admin v0.7.0 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
+tbtop/admin v0.7.1 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
 
 | Purpose | `S` factory | Value it submits |
 |---|---|---|
@@ -95,7 +95,7 @@ $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
 
 **Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields), with the rest of the [dynamic form tools](/docs/authoring/forms#dynamic-forms).
 
-**Copy button.** `copyable()` is declared on every field, but at v0.7.0 only the `text` input renders the button. It copies the current value.
+**Copy button.** `copyable()` is declared on every field, but at v0.7.1 only the `text` input renders the button. It copies the current value.
 
 **Escape hatches.** `set('key', $value)` writes a raw option into the field's node and `meta()` a raw node meta key; neither is validated, so a typo ships silently. Use them only for a client option that has no fluent method yet, such as an option read by your own [client component](/docs/extending/client-components).
 
@@ -359,7 +359,7 @@ A `slug` that is not itself translatable and derives from a translatable source 
 - **Hidden is not absent.** Use `when()`, or `requiredIf()` in place of `required()`, for fields that only matter in some states. See [What hiding does not do](/docs/authoring/forms#what-hiding-does-not-do).
 - **Repeater bounds are client-side.** `minItems()` and `maxItems()` only disable the add and remove buttons. Enforce the count with `rules('array|max:10')`.
 - **No money input.** For an amount stored in cents, use `number()->step('0.01')->prefix('$')` and convert in the submit handler. Only table columns and display values understand cents.
-- **A `date` field takes a bare day.** Its value is `Y-m-d`. In v0.7.0, a record value with a time, such as the ISO instant `$model->toArray()` gives for a `date` or `datetime` cast (`2026-10-15T09:00:00.000000Z`), renders as an empty field, and saving the form unchanged clears the date. Pass the day yourself: `$record['published_at'] = $post->published_at?->toDateString()`. Bind `date` to a date-only column; when the time matters, use `datetime`, since saving a day writes midnight.
+- **A `date` field takes a bare day.** Its value is `Y-m-d`. A record value with a time, such as the ISO instant `$model->toArray()` gives for a `date` or `datetime` cast (`2026-10-15T09:00:00.000000Z`), is trimmed to its day when the field renders. Bind `date` to a date-only column; when the time matters, use `datetime`, since saving a day writes midnight.
 - **Pass builders, not nodes.** Put the field builder itself in a form's children. A field already turned into a node with `->toNode()` throws, because its rules can no longer be collected.
 
 For a field kind the package does not ship, register your own PHP field class and client component. See [Client components](/docs/extending/client-components).
