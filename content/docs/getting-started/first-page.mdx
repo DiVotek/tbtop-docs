@@ -5,7 +5,7 @@ description: "Build a list, a create form and an edit form for a Post model, fro
 
 A page is a PHP class that extends `Tbtop\Admin\Pages\Page`. It declares a URL with `path()` and describes its content in `view()`, using the `S` builder that the framework passes in. On each request the page is serialized to JSON and sent as Inertia props, and the React client renders it. You write no JavaScript for any of this.
 
-This guide builds three pages for a `Post` model: a table of posts, a create form and an edit form. It assumes you finished [Install](/docs/getting-started/install) and have a panel with page discovery on `app/Admin/Pages`, as in [Register a panel](/docs/getting-started/panel).
+This guide builds three pages for a `Post` model by hand: a table of posts, a create form and an edit form. [Generate a resource](/docs/getting-started/resource-generator) writes the same pages from the model's table in one command; building them once by hand shows what each part does. It assumes you finished [Install](/docs/getting-started/install) and have a panel with page discovery on `app/Admin/Pages`, as in [Register a panel](/docs/getting-started/panel).
 
 ## The model
 
@@ -321,7 +321,7 @@ The three pages now make a working list, create and edit flow. The same shapes p
 - **Table rows ship only what you declare.** A row carries the record key and the visible columns, not the model's whole `toArray()`; other attributes and eager-loaded relations stay on the server. A `toggleable()` column still ships even while it is hidden in the menu, so leave out of `columns()` anything the user must not see. The `select()` above only keeps the query lean.
 - **`$ctx->row` comes from the browser.** Treat the row id as user input. If some users may only see some rows, apply the same scope in the handler that you apply in `query()`.
 - **Overlapping paths need an order.** `posts/new` and `posts/{post}/edit` never collide. `posts/new` and `posts/{post}` would, and discovered pages register in alphabetical class-name order. List such pages explicitly in the panel's `pages()`.
-- **The `/admin` prefix is hard-coded above** for readability. If the prefix may change, build URLs from route names instead. Each page's route is named `tbtop.{panel}.{slug}`, and the slug is the kebab-cased class name, so `route('tbtop.admin.post-edit-page', ['post' => $post->id], false)` returns `/admin/posts/1/edit`.
+- **The `/admin` prefix is hard-coded above** for readability. If the prefix may change, link with `url()` on the page class instead: `PostEditPage::url(['post' => $post->id])` returns `/admin/posts/1/edit`, and `PostsPage::url()` returns `/admin/posts`. See [Linking to a page](/docs/authoring/pages#linking-to-a-page).
 
 ## Where to go next
 

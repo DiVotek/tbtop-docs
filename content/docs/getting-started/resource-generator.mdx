@@ -1,0 +1,204 @@
+---
+title: "Generate a resource"
+description: "make:tbtop-resource reads a model's table and writes its list, create and edit pages, which you then own and edit."
+---
+
+[Your first page](/docs/getting-started/first-page) builds a list, a create form and an edit form by hand. `make:tbtop-resource` writes the same three pages for you, with fields, columns and validation rules read from the model's table:
+
+```bash
+php artisan make:tbtop-resource Post
+```
+
+The output is ordinary page classes in your app, like the files `admin:install --auth` publishes. The package has no notion of a "resource": no base class, no registration, nothing to keep in sync. Once the files exist, they are yours to edit, and running the command again does not touch them unless you pass `--force`.
+
+## What it writes
+
+For `Post`, the command writes `app/Admin/Pages/Posts/`:
+
+| File | Path | What it holds |
+|---|---|---|
+| `IndexPage.php` | `posts` | The table: search, sort, pagination, a "New post" button, row edit and delete, bulk delete |
+| `CreatePage.php` | `posts/new` | The create form. Saving redirects to the edit page |
+| `EditPage.php` | `posts/{post}/edit` | The edit form with a Delete button. Unique rules ignore the edited record |
+| `PostFormFields.php` | | A trait with the field list both forms share |
+
+The model argument is a class name. `Post` resolves to `App\Models\Post`, and a full class name works for a model anywhere else. The folder is the plural of the model's short name, and the path is its kebab case, so `BlogPost` gives `BlogPosts/` and `blog-posts`.
+
+Each page overrides `slug()` (`posts-index`, `posts-create`, `posts-edit`). The default slug comes from the short class name, so without it a second resource's `IndexPage` would clash with the first.
+
+When it finishes, the command reports which panel discovers the folder, as `make:tbtop-page` does. If none does, register the pages in the panel's `pages()`. If the page index is cached, rebuild it with `tbtop:cache-pages`.
+
+## From columns to fields
+
+The command reads the table through Laravel's schema builder: columns, indexes and foreign keys, plus the model's casts.
+
+| Column | Form field | Table column | Rules |
+|---|---|---|---|
+| `varchar(n)` | `text` | sortable, searchable | `max:n`, plus `email` when the name contains `email` |
+| `slug` | `slug` from `title` or `name` | sortable, searchable | as `varchar` |
+| `text` / `longtext` | `textarea` | hidden until the user shows it | `string` |
+| integer | `number` | `number()`, sortable | `integer` |
+| decimal / float | `number` | `number()`, sortable | `numeric` |
+| boolean | `boolean` | `boolean()` | `boolean` |
+| date / datetime | `date` / `datetime` | `date()` / `datetime()`, sortable | `date` |
+| time | `time` | `time()` | `date_format:H:i` |
+| BackedEnum cast | `select` with the enum's cases | `badge()` | `in:` the enum's values |
+| `*_id` with a foreign key | searchable `relation` | the related record's label | `exists:` |
+| json / array casts | a `// TODO` comment | | |
+
+On top of the type rules:
+
+- A NOT NULL column is `required()`. A nullable one gets `nullable`.
+- A unique index becomes a unique rule. On the edit page it ignores the edited record.
+- A column default becomes the create form's starting value, when it is a literal.
+- An attribute in the model's `$translatable` ([spatie/laravel-translatable](https://github.com/spatie/laravel-translatable)) gets `->translatable()`, and the edit form loads every locale.
+- A relation field shows the related model's `name`, `title` or `email` column, the first that exists, else its key. The table shows the same label when the model declares the relation (`user()` for `user_id`), and eager-loads it.
+
+The table starts with the key column, shows the first six columns, and makes the rest toggleable. The created-at column comes last, toggleable and hidden at first. The table sorts by key, newest first, 25 rows per page, and each row links to the edit page.
+
+### Columns left out
+
+The form never gets:
+
+- the key, and the model's own created-at, updated-at and deleted-at columns;
+- `password`, `remember_token` and `email_verified_at`;
+- attributes in the model's `$hidden`;
+- any column mass assignment would drop: one missing from `$fillable`, or listed in `$guarded`.
+
+A model with neither `$fillable` nor `$guarded` keeps every column, and its pages save with `forceFill()`, since `fill()` would drop everything. The command warns about it: remove the fields editors must not set, such as roles, flags and owner ids. Every other model saves through `fill()`.
+
+If a NOT NULL column without a default ends up outside the form, the command lists it. Saving fails until you set it, for example from the signed-in user in `onSubmit()`.
+
+If the table does not exist yet, the command writes the pages with TODOs in place of fields. Run the migration, then the command again with `--force`.
+
+## An example
+
+A posts table with a unique slug, an author and a status enum:
+
+```php
+Schema::create('posts', function (Blueprint $table) {
+    $table->id();
+    $table->string('title');
+    $table->string('slug')->unique();
+    $table->text('body')->nullable();
+    $table->string('status')->default('draft');
+    $table->foreignId('user_id')->constrained();
+    $table->timestamps();
+});
+```
+
+```php
+class Post extends Model
+{
+    protected $fillable = ['title', 'slug', 'body', 'status', 'user_id'];
+
+    protected function casts(): array
+    {
+        return ['status' => PostStatus::class];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+```
+
+The shared trait comes out like this:
+
+```php
+trait PostFormFields
+{
+    /** @return list<Field> */
+    protected function postFields(S $s, int|string|null $ignoreKey = null): array
+    {
+        return [
+            $s->text('title')->label('Title')->required()->rules(['max:255']),
+            $s->slug('slug')->fromField('title')->label('Slug')->required()->rules(['max:255', $this->uniqueRule('slug', $ignoreKey)]),
+            $s->textarea('body')->label('Body')->rules(['nullable', 'string']),
+            $s->select('status')->options(PostStatus::class)->label('Status')->required()->rules(['in:'.implode(',', array_column(PostStatus::cases(), 'value'))]),
+            $s->relation('user_id')->query(fn () => User::query())->labelKey('name')->searchable()->label('User')->required()->rules(['exists:users,id']),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    protected function blankPost(): array
+    {
+        return [
+            'title' => null,
+            'slug' => null,
+            'body' => null,
+            'status' => 'draft',
+            'user_id' => null,
+        ];
+    }
+
+    // postRecord() fills the edit form; uniqueRule() builds the unique rule.
+}
+```
+
+And the list page's columns:
+
+```php
+->query(fn () => Post::query()->with(['user']))
+->columns([
+    Column::make('id')->label('ID')->sortable(),
+    Column::make('title')->label('Title')->sortable()->searchable(),
+    Column::make('slug')->label('Slug')->sortable()->searchable(),
+    Column::make('body')->label('Body')->toggleable(true, true),
+    Column::make('status')->label('Status')->badge(PostStatus::class),
+    Column::make('user.name')->label('User'),
+    Column::make('created_at')->label('Created')->datetime()->sortable()->toggleable(true, true),
+])
+```
+
+The pages link to each other with `Page::url()` rather than hard-coded paths, so they keep working under any panel prefix:
+
+```php
+->recordUrl(fn (Post $record): string => EditPage::url(['post' => $record->getKey()]))
+```
+
+## Options
+
+| Option | Effect |
+|---|---|
+| `--simple` | One `IndexPage` only. Create and edit open in modals on the list |
+| `--view` | Adds a read-only `ViewPage` at `posts/{post}/view`, built from display blocks, and makes it the row link. Not allowed with `--simple` |
+| `--soft-deletes` | Trashed tabs, restore and force delete. Automatic when the model uses `SoftDeletes`, refused when it does not |
+| `--policy` | Guards the pages with the model's policy, see below |
+| `--tests` | Writes `tests/Feature/Admin/PostsTest.php`, a Pest test that opens the list page |
+| `--group=` | The menu group. Default: `Main` |
+| `--no-nav` | Keeps the list page out of the menu |
+| `--force` | Overwrites existing files |
+
+### With a policy
+
+`--policy` puts the model's policy in front of every generated page and handler:
+
+- The create page's `can()` returns `['create', Post::class]`, and the other pages return `['viewAny', Post::class]`. A page gate has no record, so `viewAny` is the closest ability. See [Authorization](/docs/authoring/pages#authorization).
+- Every record the generated code touches is checked with `Gate::authorize()`: `view`, `update`, `delete`, `restore` and `forceDelete`, including each record in a bulk action.
+- When no policy is registered, the command runs `make:policy PostPolicy --model=Post`. Its methods return `false`, so every page answers 403 until you fill them in, and the command says so.
+
+The policy guards what users can do with a record, not which records they see. The list and the relation pickers still show every row. If your policy's `view()` hides some records, scope the list's `query()` and the relation's `query()` to match.
+
+Without `--policy`, the command warns that anyone who can open the panel can create, edit and delete every record.
+
+## Safety
+
+- If any target file exists, the command writes nothing, unless you pass `--force`.
+- If a page already registered on a panel holds one of the generated paths or slugs, the command writes nothing and names that page.
+- A model whose short name clashes with a class the pages import, such as `Page`, `Field` or `Column`, is imported under an alias.
+- The generated code passes Pint's `laravel` preset and PHPStan level 6.
+
+## Gotchas
+
+- **The output is a starting point.** Labels are headlines of the column names, and the field set mirrors the table. Rename labels, reorder fields, add sections and drop what editors never touch: the trait is the one place to do it for both forms.
+- **json columns need a decision.** They come out as `// TODO` lines, because only you know whether the value is a key-value map, a repeater or tags.
+- **`--simple` resolves the record key itself.** A modal form does not yet know which record it edits, so the generated page has a small private `editedKey()` helper that reads it from the row. Leave it in place while the page has a unique rule.
+- **Tests are a stub.** The `--tests` file only opens the list page. Add create, edit and delete cases yourself.
+
+## Where to go next
+
+- [Your first page](/docs/getting-started/first-page) explains every part of these pages line by line.
+- [Tables](/docs/authoring/tables), [Forms](/docs/authoring/forms) and [Fields](/docs/authoring/fields) cover what to add once the pages are yours.
+- [Pages](/docs/authoring/pages) documents `url()`, `can()` with a model, and the other page hooks.
