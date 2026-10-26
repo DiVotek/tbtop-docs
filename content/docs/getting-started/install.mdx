@@ -84,7 +84,7 @@ The command writes three files:
 
 | File | What it is |
 |---|---|
-| `resources/views/admin.blade.php` | The root Blade view for admin pages. It loads only the admin entry, and sets the dark-mode class from the `tbtop_theme` cookie before first paint. |
+| `resources/views/admin.blade.php` | The root Blade view for admin pages. It loads only the admin entry, and puts two classes on `<html>` before first paint: the dark-mode class from the `tbtop_theme` cookie and the panel's [style preset](/docs/getting-started/customization#style-preset) class. |
 | `resources/js/admin.tsx` | The admin JavaScript entry. It boots Inertia and resolves `admin/page` to the client's `AdminPage` component. |
 | `resources/css/admin.css` | The admin stylesheet. It imports `@tbtop/inertia-admin/styles.css` and adds `@source '../../app/**/*.php'` so Tailwind sees class names written in PHP. |
 
@@ -137,7 +137,7 @@ npm run build
 
 ## Set up Inertia on the server
 
-`admin:install` does not mention this, but the panel depends on it. Admin responses are Inertia responses, and form validation errors reach the fields through Inertia's shared `errors` prop, which the Inertia middleware provides. If your app has no Inertia middleware yet, create one and add it to the `web` group:
+The panel depends on this. Admin responses are Inertia responses, and form validation errors reach the fields through Inertia's shared `errors` prop, which the Inertia middleware provides. If your app has no Inertia middleware yet, create one and add it to the `web` group:
 
 ```bash
 php artisan inertia:middleware
@@ -151,6 +151,14 @@ use App\Http\Middleware\HandleInertiaRequests;
     $middleware->web(append: [HandleInertiaRequests::class]);
 })
 ```
+
+`admin:install` prints this as an optional fifth step, with the alternative for a host whose `web` group has no Inertia middleware and should not get one, such as a Blade-only site: list the middleware on the panel instead.
+
+```php
+->middleware(['web', \App\Http\Middleware\HandleInertiaRequests::class])
+```
+
+A middleware listed on the panel does not reach a page that overrides `middleware()`, and the sign-in and password reset pages do. List it in each such page too, or [keep it in the `web` group](/docs/authoring/pages#public-pages-and-the-inertia-middleware). Without it, a page gets no validation errors and no shared props, so a failed sign-in shows no message, and the next visit to a panel page reloads the whole page on the asset-version mismatch.
 
 The package shares the signed-in user itself, as `tbtop.user`, so the user menu (logout, language switcher) needs nothing from this middleware. To add sign-in and password reset pages, see [Authentication](/docs/getting-started/authentication).
 
@@ -175,7 +183,7 @@ resolve: async (name) => {
 
 - **Only one Inertia app per page load.** The admin bundle resolves only `admin/*` components. An Inertia visit from an admin page to a page rendered by your main `app.tsx`, or the other way round, fails in the browser. Keep screens that admin users reach inside the panel, including the login page. Redirects that leave the panel should be full page loads.
 - **Classes written in PHP need an `@source` line.** If your pages live outside `app/`, or a package of yours writes admin classes, add one `@source` line per directory to `resources/css/admin.css`. Without it, those classes compile to nothing.
-- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.7.1 ships no facade class behind it. Everything is configured through the panel class and page classes.
+- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.7.2 ships no facade class behind it. Everything is configured through the panel class and page classes.
 
 ## Next steps
 

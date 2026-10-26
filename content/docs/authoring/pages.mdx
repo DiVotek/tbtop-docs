@@ -126,6 +126,19 @@ public static function can(): array
 
 A page gate has no record, so it can only ask the class-level abilities (`viewAny`, `create`). Check per-record abilities where the record is loaded, with `Gate::authorize('update', $record)` in `view()` or the handler. [`make:tbtop-resource --policy`](/docs/getting-started/resource-generator#with-a-policy) generates exactly that.
 
+#### Public pages and the Inertia middleware
+
+Panel binding, the interface locale and the package's shared props apply to every panel page, including one whose `middleware()` returns its own list: the package adds them on top of page middleware. The host's Inertia middleware (`HandleInertiaRequests`) is not added that way. It reaches such a page only when it sits in the `web` group or the page lists it. If your panel lists it in `->middleware([...])`, a page that overrides `middleware()` drops it, so list it there too:
+
+```php
+public static function middleware(PanelConfig $panel): ?array
+{
+    return ['web', \App\Http\Middleware\HandleInertiaRequests::class];
+}
+```
+
+Without it, the page gets no validation errors and no Inertia shared props, so a failed form shows no message, and the next visit to a panel page reloads the whole page on the asset-version mismatch. Hosts that append the middleware to the `web` group, as [Install](/docs/getting-started/install#set-up-inertia-on-the-server) shows, need nothing here.
+
 Keep access rules in `can()`, not in `middleware()`. The panel's [MCP endpoint](/docs/integrations/mcp) enforces `can()` but does not run page middleware.
 
 Pair a public page with a `layout()` that returns `'center'` to drop the sidebar and header. Any value other than `'admin'` or `'center'` throws.

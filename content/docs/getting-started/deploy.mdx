@@ -45,7 +45,50 @@ php artisan storage:link
 
 The package's media-library migrations load from the vendor directory and run with yours. The media library stores files on the disk named in `config/tbtop-admin.php` under `media.disk`, which is `public` by default. For those files to have working URLs, `public/storage` has to link to that disk, which is what `storage:link` does. On a symlinked-release deploy (Forge, Envoyer, Deployer), keep `storage/` shared between releases so uploads survive a deploy.
 
-To generate image variants (the `thumb` profile and any others under `media.profiles`), the server needs the PHP GD extension. Without GD, uploads still work, but no variants are generated.
+### Image variants
+
+Every raster image uploaded to the media library gets resized variants, one per profile under `media.profiles` in `config/tbtop-admin.php`. The defaults:
+
+| Profile | Size | Kind |
+|---|---|---|
+| `thumb` | fits inside 320×320 | box |
+| `sm` | 640 wide | responsive |
+| `md` | 1024 wide | responsive |
+| `lg` | 1600 wide | responsive |
+
+Variants are encoded as webp by default (`media.conversions.format`) and never upscaled. A profile without a height, such as `'sm' => [640]`, is a width-only responsive variant for a `srcset`; it is skipped for an image no wider than it, so a small image gets fewer variants. A profile can also set its own format and quality:
+
+```php title="config/tbtop-admin.php"
+'profiles' => [
+    'thumb' => [320, 320],
+    'sm' => [640],
+    'md' => [1024],
+    'lg' => [1600],
+    'og' => ['width' => 1200, 'height' => 630, 'format' => 'jpeg', 'quality' => 85],
+],
+```
+
+If you published `config/tbtop-admin.php` before v0.7.2, your copy still lists only `thumb`, and only `thumb` is generated. Copy the `sm`, `md` and `lg` lines from the package's config to get the responsive variants.
+
+Each variant is recorded in the media item's `sizes`, and the library's JSON returns it there with its URL, width, height and MIME type. SVGs get no variants.
+
+Generating variants needs the PHP GD extension. Without GD, uploads still work, but no variants are generated.
+
+### Regenerate variants for existing media
+
+Profiles apply at upload time. Media uploaded before a profile existed, such as everything stored before you added `sm`, `md` and `lg`, does not have it until you regenerate:
+
+```bash
+php artisan tbtop:media-regenerate
+```
+
+The command reads each stored original and writes the variants it lacks. It skips SVGs and items whose original is missing.
+
+- `--profile=sm --profile=md` limits it to the named profiles. An unknown name stops the command before it writes anything.
+- `--force` rebuilds variants that already exist, which you need after changing a profile's size or format. It also deletes variant files the new set no longer uses.
+- A failing item is reported and skipped. The command processes the rest, then exits with a failure code.
+
+Run it once after deploying a release or config change that adds profiles. On a large library it decodes every original, so run it outside the request path, for example in a one-off job on the server.
 
 ## Cache in the right order
 
@@ -116,4 +159,5 @@ php artisan octane:reload       # only if you run Octane
 - The panel is limited to staff, not merely to signed-in users. See [access control](/docs/getting-started/panel#access-control).
 - If you wrote your own login page instead of publishing the package's, its submit handler is rate-limited with Laravel's `RateLimiter`. The published pages throttle for you.
 - `media.url_import.allowed_hosts` in `config/tbtop-admin.php` is set if editors should import media only from known hosts. Empty means any host that passes the built-in SSRF guard.
+- After adding or changing `media.profiles`, `php artisan tbtop:media-regenerate` has run once, so older media has the new variants (see [Regenerate variants](#regenerate-variants-for-existing-media)).
 - `media.accept` and `media.max_size` match what editors should be able to upload. `max_size` is in kilobytes. Uploaded SVGs are sanitized on the server, and HTML files are always refused.
