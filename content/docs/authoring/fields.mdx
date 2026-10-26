@@ -11,7 +11,7 @@ The full method list for every kind is in the [Fields API reference](/docs/api/f
 
 ## Field kinds by purpose
 
-tbtop/admin v0.7.1 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
+tbtop/admin v0.7.2 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
 
 | Purpose | `S` factory | Value it submits |
 |---|---|---|
@@ -87,7 +87,7 @@ $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
 ])
 ```
 
-**Labels and hints.** `label()` defaults to the humanized field name, and validation messages use it as the attribute name. `text`, `textarea`, `number` and `richtext` also take `placeholder()`.
+**Labels and hints.** `label()` defaults to the humanized field name, and validation messages use it as the attribute name. `text`, `textarea`, `number` and `richtext` also take `placeholder()`. On `text` and `textarea` it also takes a locale map for [translatable fields](#translatable-fields).
 
 **Validation.** `required()` marks the field and adds the `required` rule; `rules()` appends any Laravel rules, as a pipe string or an array. Kinds add fluent helpers that fit them — `minLength()`, `maxLength()`, `regex()` and `alphaDash()` on text kinds, `minValue()`, `maxValue()`, `between()` and `integer()` on numbers, `unique()` and `exists()` where a value can live in a table — and each appends the same rule `rules()` would. A `boolean` has no `maxLength()`. `->regex()` is the safe way to add a pattern, and `ignore()` must follow `unique()`, since it rewrites the last `unique` rule and throws otherwise. How the rules run, and the ones that catch people out, are on [Forms](/docs/authoring/forms#validation).
 
@@ -95,7 +95,7 @@ $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
 
 **Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields), with the rest of the [dynamic form tools](/docs/authoring/forms#dynamic-forms).
 
-**Copy button.** `copyable()` is declared on every field, but at v0.7.1 only the `text` input renders the button. It copies the current value.
+**Copy button.** `copyable()` is declared on every field, but at v0.7.2 only the `text` input renders the button. It copies the current value.
 
 **Escape hatches.** `set('key', $value)` writes a raw option into the field's node and `meta()` a raw node meta key; neither is validated, so a typo ships silently. Use them only for a client option that has no fluent method yet, such as an option read by your own [client component](/docs/extending/client-components).
 
@@ -313,7 +313,7 @@ $s->media('gallery_ids')->label('Gallery')
     ->rules('nullable|array'),
 ```
 
-With `multiple()` the value is an array of ids in the order shown, so the first id can serve as the cover. `variant('preview')` replaces the default Choose button with a large clickable preview; it applies only to single selection. Library-wide settings — disk, accepted types, size limit, image conversions — live under the `media` key of `config/tbtop-admin.php`, not on the field. To render a picked item, load the `Media` row and build the URL from its `disk` and `path`.
+With `multiple()` the value is an array of ids in the order shown, so the first id can serve as the cover. `variant('preview')` replaces the default Choose button with a large clickable preview; it applies only to single selection. Library-wide settings — disk, accepted types, size limit, image conversions — live under the `media` key of `config/tbtop-admin.php`, not on the field. To render a picked item, load the `Media` row and build the URL from its `disk` and `path`. Its `sizes` column holds the generated variants, keyed by profile name, each with its `path`, `width`, `height` and `mime`; [Deploy](/docs/getting-started/deploy#image-variants) lists the default profiles.
 
 Pick `upload` when the file belongs to one record and nothing else. Pick `media` when editors should reuse files across records.
 
@@ -345,6 +345,13 @@ $s->richtext('description')->label('Description')->translatable(),
 
 **Rules apply to the default locale.** `rules()` and the fluent helpers validate the default content locale only, as `name.en`. Every other locale gets `nullable` unless you set its rules with `rulesForLocale()`, which replaces the rules for that locale rather than adding to them.
 
+**Placeholders per locale.** `text` and `textarea` take a placeholder per content locale. Each locale tab shows its own text, and a locale missing from the map shows none. On a field that is not translatable, the map's default-locale entry is used.
+
+```php
+$s->text('title')->translatable()
+    ->placeholder(['en' => 'Page title', 'uk' => 'Назва сторінки']),
+```
+
 **Repeaters cascade.** `translatable()` on a repeater makes each sub-field translatable; the repeater's own value stays a plain list of rows.
 
 **Tables read the default locale.** In a table, `Column::make('name')->translatable()` shows the default-locale value, falling back to the first non-empty one. See [Tables](/docs/authoring/tables#columns).
@@ -360,6 +367,7 @@ A `slug` that is not itself translatable and derives from a translatable source 
 - **Repeater bounds are client-side.** `minItems()` and `maxItems()` only disable the add and remove buttons. Enforce the count with `rules('array|max:10')`.
 - **No money input.** For an amount stored in cents, use `number()->step('0.01')->prefix('$')` and convert in the submit handler. Only table columns and display values understand cents.
 - **A `date` field takes a bare day.** Its value is `Y-m-d`. A record value with a time, such as the ISO instant `$model->toArray()` gives for a `date` or `datetime` cast (`2026-10-15T09:00:00.000000Z`), is trimmed to its day when the field renders. Bind `date` to a date-only column; when the time matters, use `datetime`, since saving a day writes midnight.
+- **A slug stops following its source.** A `slug` with `fromField()` follows the source while the editor types in it, and is fixed once focus leaves the source. After that, only its Generate button derives it again. A saved, non-empty slug starts fixed, so editing the title of an existing record does not change its URL.
 - **Pass builders, not nodes.** Put the field builder itself in a form's children. A field already turned into a node with `->toNode()` throws, because its rules can no longer be collected.
 
 For a field kind the package does not ship, register your own PHP field class and client component. See [Client components](/docs/extending/client-components).
