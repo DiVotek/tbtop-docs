@@ -57,7 +57,8 @@ function rewriteSiblingApiLinks(body: string): string {
 /**
  * Table cells hold PHP-ish snippets with literal `{`/`}` and, once, a raw
  * `<dl>` tag — both of which MDX tries to parse as JSX. Escape them to
- * entities so the tables compile without changing what renders.
+ * entities so the tables compile without changing what renders. Code spans
+ * are left alone: MDX keeps their text literal, entities included.
  */
 function escapeMdxHazards(body: string): string {
 	return body
@@ -65,11 +66,18 @@ function escapeMdxHazards(body: string): string {
 		.map((line) => {
 			if (!line.startsWith("|")) return line;
 			return line
-				.replace(/\{/g, "&#123;")
-				.replace(/\}/g, "&#125;")
-				.replace(/<(\/?[a-zA-Z])/g, "&lt;$1");
+				.split(/(`[^`]*`)/)
+				.map((part) => (part.startsWith("`") ? part : escapeProse(part)))
+				.join("");
 		})
 		.join("\n");
+}
+
+function escapeProse(text: string): string {
+	return text
+		.replace(/\{/g, "&#123;")
+		.replace(/\}/g, "&#125;")
+		.replace(/<(\/?[a-zA-Z])/g, "&lt;$1");
 }
 
 function toMdx(name: string, title: string, raw: string): string {

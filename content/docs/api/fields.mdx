@@ -347,7 +347,7 @@ No methods beyond the shared base — see [Every field](#every-field).
 | `multiple(bool $value = true): static` | Allow selecting more than one value. |
 | `quality(int $q): static` | Encoder quality (1-100) for the converted image. |
 | `reorderable(bool $value = true): static` | Allow drag-to-reorder when multiple is enabled. |
-| `saveUsing(Closure $fn): static` | Override how an uploaded file is stored. The closure receives the UploadedFile and the resolved UploadFieldConfig and must return the wire shape `&#123;path, url&#125;`. Default stores to the configured disk. Never serialized to the client. Bypasses UploadStorer::store() entirely, so SVG sanitization is skipped — the mime-guard (accept + text/html rejection) still runs first, but a custom closure that stores SVGs must sanitize them itself. |
+| `saveUsing(Closure $fn): static` | Override how an uploaded file is stored. The closure receives the UploadedFile and the resolved UploadFieldConfig and must return the wire shape `{path, url}`. Default stores to the configured disk. Never serialized to the client. Bypasses UploadStorer::store() entirely, so SVG sanitization is skipped — the mime-guard (accept + text/html rejection) still runs first, but a custom closure that stores SVGs must sanitize them itself. |
 | `visibility(string $v): static` | Storage visibility: 'public' (default) or 'private'. |
 
 ## Embed (richtext embeds)

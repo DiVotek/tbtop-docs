@@ -128,7 +128,7 @@ A page gate has no record, so it can only ask the class-level abilities (`viewAn
 
 #### Public pages and the Inertia middleware
 
-A page that returns its own list still gets panel binding, the interface locale and the package's shared props: those run on top of any page middleware. The host's Inertia middleware (`HandleInertiaRequests`) is different. It stays only when it sits in the `web` group. If your panel lists it in `->middleware([...])`, a page that overrides `middleware()` drops it, so list it there too:
+Panel binding, the interface locale and the package's shared props apply to every panel page, including one whose `middleware()` returns its own list: the package adds them on top of page middleware. The host's Inertia middleware (`HandleInertiaRequests`) is not added that way. It reaches such a page only when it sits in the `web` group or the page lists it. If your panel lists it in `->middleware([...])`, a page that overrides `middleware()` drops it, so list it there too:
 
 ```php
 public static function middleware(PanelConfig $panel): ?array
