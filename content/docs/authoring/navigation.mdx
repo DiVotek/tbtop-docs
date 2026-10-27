@@ -138,9 +138,11 @@ The profile dropdown in the header takes the same `NavItem` links through `userM
 
 ```php
 $panel->userMenuItems([
-    NavItem::make('Profile')->url('/admin/profile')->icon('user'),
+    NavItem::make('API tokens')->url('/admin/api-tokens')->icon('key'),
 ]);
 ```
+
+A panel that serves the package's [profile page](/docs/getting-started/authentication#the-profile-page) gets a "Profile" entry at the top of this list on its own, so do not add one here.
 
 ## Menu layout
 

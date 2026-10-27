@@ -1,6 +1,6 @@
 ---
 title: "Tables"
-description: "Build a server-driven table: columns, sorting, search, filters, tabs, pagination, and row and bulk actions."
+description: "Build a server-driven table: columns, sorting, search, filters, tabs, pagination, polling, and row and bulk actions."
 ---
 
 A table is a block you add to a page with `$s->table('name')`. It needs two things: `columns()` to say what each row shows, and `query()` to say where the rows come from. Everything else — sorting, search, filters, tabs, actions — is opt-in.
@@ -91,6 +91,39 @@ $s->table('categories')
 
 **Presentation.** `align()`, `width()`, `wrap()`, `truncate()`, `noWrap()`, `muted()`, `description()`, `tooltip()`, `prefix()`/`suffix()` and `copyable()` adjust a cell without changing its value.
 
+**Grouped columns.** `group([...])` stacks several columns under one header and in one cell:
+
+```php
+Column::make('product')->label('Product')->group([
+    Column::make('name')->label('Name')->sortable(),
+    Column::make('sku')->label('SKU')->searchable(),
+]),
+```
+
+The group itself is display-only; its children are the real fields. `searchable()`, `sortable()` and `translatable()` go on a child and work as they do on any column. The group's header sorts by its first `sortable()` child. `sortable()` and `individuallySearchable()` on the group throw, and so does `individuallySearchable()` on a child.
+
+**Column order and width.** Users arrange the columns themselves. In the Columns menu they drag an entry by its grip, or move it with Alt+↑ and Alt+↓. They resize a column by dragging the right edge of its header; a double-click restores the declared `width()`. The layout is saved per table in the browser's `localStorage`, under `tbtop:table.<name>.layout.v1`, next to the visibility choice. The menu gains a reset entry once anything is customized, and it clears order and widths together.
+
+There is no PHP setting for this: the order in `columns()` stays the default, and nothing reaches the server. A column you add later goes to the end of a user's saved order, and the leading `sticky()` columns never move. A table without the Columns menu keeps the declared order: `columnToggle(false)` tables can still be resized, embedded ones cannot.
+
+### Sticky columns
+
+A wide table scrolls sideways inside its frame. `sticky()` pins a column to the left edge, so the row stays identifiable while the rest slides under it:
+
+```php
+->columns([
+    Column::make('number')->label('Order')->sticky(),
+    Column::make('customer.name')->label('Customer')->sticky(),
+    Column::make('total_cents')->label('Total')->money('EUR'),
+    // … more columns than the screen fits
+])
+```
+
+- Sticky columns must come first in `columns()`. A sticky column after a scrolling one throws `InvalidArgumentException`, since it would slide over its neighbour. Several sticky columns stack left to right.
+- On a grouped column, call `sticky()` on the group. A sticky child throws.
+- The row checkbox for bulk actions and the drag-reorder handle are pinned with them. Row actions scroll.
+- Offsets are measured from the rendered header, so `width()` is not required. A wide sticky column eats the scroll area, so keep it narrow with `width()` or `truncate()`.
+
 ### Badges
 
 `badge()` maps the stored value to a label and a color. It takes an inline map or an enum class:
@@ -161,6 +194,8 @@ Column::make('total_cents')->label('Total')->money('USD')
 ```
 
 `sortBy()` names another field to order by. A dotted sort target whose first segment is a relation method on the model — a sortable `customer.name` column, or `sortBy('customer.name')` — is ordered through a correlated subquery rather than a join; a to-many relation sorts by its first related row. This needs an Eloquent `query()`. `sortUsing()` gives you the query and a direction already validated to `asc` or `desc`; it wins over `sortBy()`.
+
+In a [grouped column](#columns), mark a child `sortable()`; the group's header then sorts by the first sortable child.
 
 ## Search
 
@@ -249,6 +284,18 @@ A tab's `query()` narrows the table's builder in place and runs before search, f
 
 Pagination is always on. `paginate(25, [10, 25, 50, 100])` sets the default page size and the sizes the user can pick — those are also the defaults. A requested page size outside the list falls back to the default.
 
+**Simple pagination.** On a large or heavily joined table the `count()` query is the slow one. `simplePagination()` skips it:
+
+```php
+$s->table('events')
+    ->paginate(50, [50, 100])
+    ->simplePagination()
+```
+
+The page query reads one row more than the page size, only to learn whether there is a next page. The footer shows previous, "Page N", next and the page-size selector, without the "1–25 of 1,000" range or page numbers, and it hides on a first page with no next one. Search, filters, sort, tabs and URL state work as before. A tab with `count()` still runs its own count query for its badge, so drop `count()` from those tabs if the point is to avoid counting. Cursor pagination is not offered.
+
+A custom client that reads the table endpoint directly gets `hasMore` (a boolean) in place of `total` from such a table.
+
 ## Rows and actions
 
 **Row links.** `recordUrl(fn ($row) => "/admin/orders/{$row->id}")` makes each row a link; the closure receives the model. `rowClick('edit')` instead makes a row click fire the row action named `edit`.
@@ -300,6 +347,24 @@ Column::make('featured')->label('Featured')
 `selectColumn()` takes its choices from `options()`, which accepts an option list or an enum class; the cases become `{value, label}` pairs. Options imply no validation, so add `rules([Rule::enum(OrderStatus::class)])`.
 
 The model is loaded through the table's own `query()`, so a row outside that query cannot be edited, and the query must be Eloquent. Add `rules()` to the column to validate the value before `onSave` runs. An editable cell shows the raw stored value, so kind formatting does not apply, and `formatUsing()` on an editable column throws when the page renders; use `prefix()`/`suffix()` for units. `step()` without `numberInput()` throws too.
+
+## Auto-refresh
+
+`poll(10)` re-fetches the current page of rows every 10 seconds, through the same endpoint and with the user's search, filters, sort, tab and page. It is for lists that change while someone watches them, such as an order queue or an import log:
+
+```php
+$s->table('orders')
+    ->query(fn () => Order::query()->latest())
+    ->columns([...])
+    ->poll(10)
+```
+
+- **Silent.** The rows stay on screen with no loading overlay. One failed refresh keeps them and tries again; a second failure in a row shows the table's error state with a retry button, so stale rows never pass for current ones.
+- **No pile-up.** A tick that lands while a slow fetch is still running is skipped, not cancelled.
+- **Pauses.** Polling stops while the browser tab is hidden, with one refresh on return, and while any row is selected, since new rows would clear the selection a bulk action is about to use. An inline cell with an unsaved edit keeps it.
+- **Floor of 5 seconds.** A shorter interval throws.
+
+For a change the page itself makes, the `refreshTable` effect is still the tool; `poll()` covers changes made elsewhere.
 
 ## More table features
 

@@ -142,6 +142,30 @@ return $panel
 - **Theme.** `defaultThemeMode()` applies only when the visitor has no saved `tbtop_theme` cookie. If you pick a default other than `system`, change the inline script in `admin.blade.php` too; see [Dark mode](/docs/getting-started/customization#dark-mode). Colours, radius and fonts are not panel settings: they are CSS variables in `resources/css/admin.css`, covered in [Colours](/docs/getting-started/customization#colours).
 - **UI language.** `locales()` is the language of the admin interface. The chosen locale is kept in the session. The package ships English and Ukrainian strings. With two or more locales, the user menu shows a language switcher. The languages your *content* is stored in are a different setting: `content_locales` in `config/tbtop-admin.php`.
 
+### Environment indicator
+
+`environmentIndicator()` shows the app environment as a colored badge at the start of the header and a thin strip along the top edge, so nobody edits staging thinking it is production. It is off until you call it, and hidden in `production` unless you list it:
+
+```php
+return $panel->environmentIndicator();             // "Local" green, "Staging" amber, …
+
+return $panel->environmentIndicator([
+    'staging' => 'danger',                         // recolor
+    'qa' => ['label' => 'QA', 'color' => 'info'],  // label an environment of your own
+    'local' => false,                              // hide one
+    'production' => 'danger',                      // listing production shows it there
+]);
+
+return $panel->environmentIndicator(              // full control, called on every request
+    fn (): ?array => config('app.preview') ? ['label' => 'Preview', 'color' => 'info'] : null,
+);
+```
+
+- The environment is `app()->environment()`, and the default label is its name, capitalized.
+- Default colors: `local`, `development` and `dev` are green (`success`), `testing` and `test` are `info`, `staging` and `stage` are amber (`warning`), anything else is `gray`. A color is one of the badge colors (`gray`, `primary`, `success`, `warning`, `danger`, `info`) or one you added with [`registerTableColor()`](/docs/getting-started/customization#badge-and-icon-colours-in-tables).
+- The closure may return only `label` or only `color`, and the other falls back to the default. Return `null` to hide the indicator for that request.
+- The badge is added in front of whatever the header renders, including a custom [chrome](#header-sidebar-and-footer) or a React header slot.
+
 ### Header, sidebar and footer
 
 The stock shell has a logo and the navigation menu in the sidebar, and the user menu in the header. To change it, point `->chrome()` at a subclass of `Tbtop\Admin\Panels\Chrome`:

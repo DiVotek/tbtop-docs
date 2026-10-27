@@ -1,15 +1,15 @@
 ---
 title: "Authentication"
-description: "Publish the sign-in and password reset pages, send guests to them, and rely on the logout route and signed-in user the package provides."
+description: "Publish the sign-in, password reset and profile pages, send guests to them, and rely on the logout route and signed-in user the package provides."
 ---
 
 Every panel page runs behind `auth:{guard}`, except pages that replace their middleware to stay public, such as the auth pages below. The package handles the parts that only make sense inside a panel:
 
 - **Sign-out.** Every panel answers `POST {prefix}/logout`, which the user menu posts to.
 - **The signed-in user.** The panel's guard user is shared as the `tbtop.user` Inertia prop, which the header's user menu reads.
-- **Sign-in and password reset.** These ship as base pages. `admin:install --auth` publishes them into your app, where you own them.
+- **Sign-in, password reset and the profile page.** These ship as base pages. `admin:install --auth` publishes them into your app, where you own them.
 
-The host app still owns the rest of authentication: the user model, the guard, the password broker, and anything beyond sign-in and reset. Registration, email verification and a second factor do not ship. See [What stays yours](#what-stays-yours).
+The host app still owns the rest of authentication: the user model, the guard, the password broker, and anything beyond sign-in, reset and the profile page. Registration, email verification and a second factor do not ship. See [What stays yours](#what-stays-yours).
 
 ## Publish the auth pages
 
@@ -17,13 +17,14 @@ The host app still owns the rest of authentication: the user model, the guard, t
 php artisan admin:install --auth
 ```
 
-This writes three files to `app/Admin/Pages/Auth/`:
+This writes four files to `app/Admin/Pages/Auth/`:
 
 | File | Path | Route name |
 |---|---|---|
 | `LoginPage.php` | `{prefix}/login` | `tbtop.{panel}.login-page` |
 | `ForgotPasswordPage.php` | `{prefix}/forgot-password` | `tbtop.{panel}.forgot-password-page` |
 | `ResetPasswordPage.php` | `{prefix}/reset-password/{token}` | `tbtop.{panel}.reset-password-page` |
+| `ProfilePage.php` | `{prefix}/profile` | `tbtop.{panel}.profile-page` |
 
 Each file is an empty subclass of a package base page in `Tbtop\Admin\Auth`:
 
@@ -35,7 +36,7 @@ namespace App\Admin\Pages\Auth;
 class LoginPage extends \Tbtop\Admin\Auth\LoginPage {}
 ```
 
-The behaviour lives in the base, so fixes arrive with `composer update`. The file is yours: override a hook in it to change the screen, or delete it to drop the screen. Deleting `ForgotPasswordPage` and `ResetPasswordPage` drops password reset, and the login page stops showing its "Forgot your password?" link.
+The behaviour lives in the base, so fixes arrive with `composer update`. The file is yours: override a hook in it to change the screen, or delete it to drop the screen. Deleting `ForgotPasswordPage` and `ResetPasswordPage` drops password reset, and the login page stops showing its "Forgot your password?" link. Deleting `ProfilePage` drops the profile page and its entry in the user menu.
 
 How the command behaves:
 
@@ -44,7 +45,9 @@ How the command behaves:
 - **It skips pages the panel already serves.** If the panel already has a page at the same path or slug, such as a login page you wrote earlier, that page is skipped. Two would break every request to the panel with a duplicate-slug error. Delete your old page first if you want the published one.
 - **It prints the steps it does not do for you.** The guest redirect below, and a `discoverPages()` line when the panel does not discover `app/Admin/Pages`.
 
-Without `--auth`, `admin:install` publishes only the root view, the JS entry and the stylesheet, as before.
+If your app signs users in through its own screens and you only want the profile page, run `php artisan admin:install --profile` instead. It publishes `ProfilePage.php` alone and behaves the same way: one panel per run, no overwrites without `--force`.
+
+Without `--auth` or `--profile`, `admin:install` publishes only the root view, the JS entry and the stylesheet, as before.
 
 <Callout type="info">
   The scaffold always writes to `app/Admin/Pages/Auth`. Running `--auth` again for a second panel reports the files as existing and does nothing. For a second panel, write its subclasses by hand in another directory.
@@ -68,7 +71,7 @@ $middleware->redirectGuestsTo(fn () => \Tbtop\Admin\Auth\LoginPage::currentUrl()
 
 ## What the pages do
 
-The three pages share one shell:
+The sign-in and password reset pages share one shell:
 
 - **Public.** Their middleware is `['web', RedirectSignedInUsers::class]`, not the panel's stack. A guest can reach them even when the panel's stack carries an access check.
 - **Signed-in users are sent into the panel.** A user already signed in on the panel's guard who opens one of them lands on the panel root. Laravel's own `guest` middleware is not used, because it redirects to the app's home route, which knows nothing about panels.
@@ -76,11 +79,13 @@ The three pages share one shell:
 - **Hidden from [MCP](/docs/integrations/mcp).** Signing in needs a browser session.
 - **Chrome-less.** They use the `center` layout, and their forms skip the unsaved-changes guard.
 
-**Sign-in** checks email and password on the panel's guard, never the app's default guard. It has a "Remember me" checkbox. Failed attempts are throttled to five a minute per email and IP address. On success it renews the session and sends the user to the page they were bounced from, or to the panel root.
+**Sign-in** checks email and password on the panel's guard, never the app's default guard. It has a "Remember me" checkbox. Failed attempts are throttled to five a minute per email and IP address. When the throttle trips it fires Laravel's `Illuminate\Auth\Events\Lockout` event, so a listener you already have for Breeze or Fortify lockouts keeps working. On success it renews the session and sends the user to the page they were bounced from, or to the panel root.
 
 **Forgot password** emails a reset link that opens the panel's reset page, not Laravel's `password.reset` route. Laravel's global `ResetPassword::createUrlUsing()` is left alone for your app's own links. The answer is the same whether or not the email is registered, so the form does not reveal which accounts exist. Requests are throttled to five a minute per IP address.
 
 **Reset password** sets the new password, rotates the remember token so other devices with a remember cookie are signed out, and sends the user to the login page. An unknown email gets the same answer as a bad token, and failed attempts are throttled to five a minute per IP address.
+
+All three forms answer malformed input, such as an array where a string belongs, with an ordinary validation error rather than a server error. The throttle messages say what was throttled: sign-in attempts, reset link requests or reset attempts.
 
 The pages assume a user model with `email` and `password` columns, and the `password_reset_tokens` table from Laravel's application skeleton.
 
@@ -176,6 +181,44 @@ To change what a core does, override it and wrap `parent::authenticate($ctx)` ra
 
 The pages' text comes from the `auth.login`, `auth.forgot` and `auth.reset` keys of the package's translation file. See [Interface text](/docs/getting-started/customization#interface-text) to override them.
 
+## The profile page
+
+`ProfilePage` lets the signed-in user change their own name, email and password. Unlike the sign-in pages it is not public: it runs behind the panel's auth stack and edits the user of the panel's guard.
+
+- **Two forms.** The first holds name and email. A new email needs the current password, so a hijacked session cannot point password resets at another inbox. The second changes the password and also asks for the current one.
+- **Throttled.** Wrong current passwords are limited to five a minute per user, counted across both forms.
+- **Other sessions are signed out.** A password change keeps the current session and signs out every other one, including remember-me cookies on other devices.
+- **A user menu entry.** While the panel serves a `ProfilePage` subclass, the user menu starts with a "Profile" item that links to it. You no longer need a `userMenuItems()` link of your own; remove it if you added one, or the menu shows two.
+- **Hidden from [MCP](/docs/integrations/mcp)**, like the other auth pages.
+
+Its hooks:
+
+| Hook | What it controls |
+|---|---|
+| `view(S $s)` | The whole screen. Call `parent::view($s)` and stack your own sections after it, such as a two-factor setup card. |
+| `profileForm(S $s)` | The name and email form. |
+| `passwordForm(S $s)` | The password form. |
+| `profileRules(Model $user)` | Rules for name and email. By default a new email must be lowercase and unique among users, on the user model's own connection and table. |
+| `passwordRules()` | Rules for the new password. Defaults to `['required', 'string', 'confirmed', Password::defaults()]`. |
+
+Add a phone number to the profile rules:
+
+```php title="app/Admin/Pages/Auth/ProfilePage.php"
+use Illuminate\Database\Eloquent\Model;
+
+class ProfilePage extends \Tbtop\Admin\Auth\ProfilePage
+{
+    protected function profileRules(Model $user): array
+    {
+        return [...parent::profileRules($user), 'phone' => ['nullable', 'string', 'max:32']];
+    }
+}
+```
+
+A new rule only validates and saves the field; override `profileForm()` as well to show an input for it.
+
+The page needs an Eloquent user model with `name`, `email` and `password` attributes. When the model implements `MustVerifyEmail`, a changed email is marked unverified, but no verification mail is sent: the package has no verification flow, so sending the link is up to your app.
+
 ## Choose the password broker
 
 Reset uses the app's default password broker. A panel whose guard reads users from a different provider, such as an `admins` table, needs its own broker in `config/auth.php`. Name it on the panel:
@@ -208,7 +251,7 @@ The client reads the user only from `tbtop.user`. An `auth.user` prop shared fro
 
 ## What stays yours
 
-- **Registration, email verification and a second factor.** Write them as public DSL pages. The [second factor](#add-a-second-factor) section shows where 2FA hooks in.
+- **Registration, email verification and a second factor.** Write them as public DSL pages, and add a second-factor setup card to the profile page through its `view()`. The [second factor](#add-a-second-factor) section shows where 2FA hooks in.
 - **Access control.** Signing in proves who the user is, not that they belong in the admin. Limit the panel to staff with [access control](/docs/getting-started/panel#access-control).
 - **An existing login screen.** If you keep a React login screen in your app's own Inertia bundle, such as a Breeze screen, skip `--auth` and end its sign-in with a full page load into the panel: return `Inertia::location('/admin')` from the controller. A plain `redirect()` is followed inside your app's bundle, which cannot render admin pages. The logout route and the shared user work either way.
 
