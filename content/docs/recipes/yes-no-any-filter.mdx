@@ -50,10 +50,12 @@ A select keeps the filter to one closed control, which suits a modal or a crowde
 ```php
 use Tbtop\Admin\Dsl\Fields\Select;
 
-Select::make('is_published')->label('Published')->options([
-    ['value' => '1', 'label' => 'Yes'],
-    ['value' => '0', 'label' => 'No'],
-]),
+->filters([
+    Select::make('is_published')->label('Published')->options([
+        ['value' => '1', 'label' => 'Yes'],
+        ['value' => '0', 'label' => 'No'],
+    ]),
+])
 ```
 
 With nothing chosen, the select shows its placeholder and the filter is off. A select cannot hold an empty-value option: the dropdown it renders rejects one and the page throws. Once a value is picked, the only way back to "any" is the table's Reset button, which clears every filter.
@@ -61,15 +63,17 @@ With nothing chosen, the select shows its placeholder and the filter is off. A s
 When the select needs an explicit "Any" entry, give that entry a value of its own and map it in `filterUsing()`:
 
 ```php
-Select::make('is_published')->label('Published')->options([
-    ['value' => 'any', 'label' => 'Any'],
-    ['value' => '1', 'label' => 'Yes'],
-    ['value' => '0', 'label' => 'No'],
-])->filterUsing(fn ($query, $value) => match ($value) {
-    '1' => $query->where('is_published', true),
-    '0' => $query->where('is_published', false),
-    default => $query,
-}),
+->filters([
+    Select::make('is_published')->label('Published')->options([
+        ['value' => 'any', 'label' => 'Any'],
+        ['value' => '1', 'label' => 'Yes'],
+        ['value' => '0', 'label' => 'No'],
+    ])->filterUsing(fn ($query, $value) => match ($value) {
+        '1' => $query->where('is_published', true),
+        '0' => $query->where('is_published', false),
+        default => $query,
+    }),
+])
 ```
 
 Unlike the radio's empty option, `any` is a real value: it stays in the URL and counts on the filter badge.
@@ -79,13 +83,15 @@ Unlike the radio's empty option, `any` is a real value: it stays in the URL and 
 `filterUsing()` also covers a yes/no that is a condition rather than a boolean column. The closure receives the raw string, `"1"` or `"0"`:
 
 ```php
-Radio::make('verified')->label('Email verified')->inline()->options([
-    ['value' => '', 'label' => 'Any'],
-    ['value' => '1', 'label' => 'Yes'],
-    ['value' => '0', 'label' => 'No'],
-])->filterUsing(fn ($query, $value) => $value === '1'
-    ? $query->whereNotNull('email_verified_at')
-    : $query->whereNull('email_verified_at')),
+->filters([
+    Radio::make('verified')->label('Email verified')->inline()->options([
+        ['value' => '', 'label' => 'Any'],
+        ['value' => '1', 'label' => 'Yes'],
+        ['value' => '0', 'label' => 'No'],
+    ])->filterUsing(fn ($query, $value) => $value === '1'
+        ? $query->whereNotNull('email_verified_at')
+        : $query->whereNull('email_verified_at')),
+])
 ```
 
 The same shape works for a `whereHas()` on a relation, or for a nullable boolean column where `NULL` should count as "no": the default `where(name, '0')` leaves `NULL` rows out, so map "No" to `where(fn ($q) => $q->where('col', false)->orWhereNull('col'))`.
