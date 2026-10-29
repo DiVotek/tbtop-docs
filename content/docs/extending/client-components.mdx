@@ -316,7 +316,8 @@ API reference and [Actions](/docs/authoring/actions) for the other action types.
 Icon names in the DSL (`->icon('truck')`, the `icon` key of a page's `nav()`) resolve
 against the client's icon registry. Every icon that `lucide-react` ships is already there
 under its kebab-case name from [lucide.dev/icons](https://lucide.dev/icons) (`truck`,
-`memory-stick`, `hard-drive`), so `->icon('truck')` works with no client code.
+`memory-stick`, `hard-drive`, and numbered ones such as `share-2` or `trash-2`), so
+`->icon('truck')` works with no client code.
 
 Call `registerIcon()` only for a name Lucide doesn't have: an alias, your own icon
 component, or an override of a built-in name. Register at startup, before the app mounts:

@@ -121,7 +121,7 @@ The parent must itself be a menu-eligible page in the same panel: registered, wi
 
 ## Links that are not pages
 
-`navigationItems()` adds entries that have no page behind them, typically external links. They are always shown — there is no gate — and are grouped by the same group key as pages:
+`navigationItems()` adds entries that have no page behind them, typically external links. They are grouped by the same group key as pages:
 
 ```php
 use Tbtop\Admin\Navigation\NavItem;
@@ -134,13 +134,22 @@ $panel->navigationItems([
 
 `NavItem` also has `->sort(int)` for its position within the group.
 
-The profile dropdown in the header takes the same `NavItem` links through `userMenuItems()`. They render below the user's name, above the built-in language section (shown when the panel has two or more interface locales) and the Log out item. These are links only — no server handler — and `group`/`sort` do not apply:
+A `NavItem` is shown to everyone until `->can()` names a gate. It takes the same value a page's `can()` returns, an ability or an ability plus the model class its policy resolves from, and is checked on every request. Pass a page's own `can()` to hide a link to a page the user could not open:
+
+```php
+NavItem::make('Reports')->url('/admin/reports')->can(ReportsPage::can()),
+NavItem::make('Billing')->url('https://billing.example.com')->can('manage-billing'),
+```
+
+The profile dropdown in the header takes the same `NavItem` links through `userMenuItems()`. They render below the user's name, above the built-in language section (shown when the panel has two or more interface locales) and the Log out item. These are links only — no server handler — and `group`/`sort` do not apply; `->can()` hides an entry the same way:
 
 ```php
 $panel->userMenuItems([
-    NavItem::make('Profile')->url('/admin/profile')->icon('user'),
+    NavItem::make('API tokens')->url('/admin/api-tokens')->icon('key'),
 ]);
 ```
+
+A panel that serves the package's [profile page](/docs/getting-started/authentication#the-profile-page) gets a "Profile" entry at the top of this list on its own, so do not add one here.
 
 ## Menu layout
 

@@ -160,7 +160,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 
 A middleware listed on the panel does not reach a page that overrides `middleware()`, and the sign-in and password reset pages do. List it in each such page too, or [keep it in the `web` group](/docs/authoring/pages#public-pages-and-the-inertia-middleware). Without it, a page gets no validation errors and no shared props, so a failed sign-in shows no message, and the next visit to a panel page reloads the whole page on the asset-version mismatch.
 
-The package shares the signed-in user itself, as `tbtop.user`, so the user menu (logout, language switcher) needs nothing from this middleware. To add sign-in and password reset pages, see [Authentication](/docs/getting-started/authentication).
+The package shares the signed-in user itself, as `tbtop.user`, so the user menu (logout, language switcher) needs nothing from this middleware. To add sign-in, password reset and profile pages, see [Authentication](/docs/getting-started/authentication).
 
 ## Render the 404 page
 
@@ -183,10 +183,10 @@ resolve: async (name) => {
 
 - **Only one Inertia app per page load.** The admin bundle resolves only `admin/*` components. An Inertia visit from an admin page to a page rendered by your main `app.tsx`, or the other way round, fails in the browser. Keep screens that admin users reach inside the panel, including the login page. Redirects that leave the panel should be full page loads.
 - **Classes written in PHP need an `@source` line.** If your pages live outside `app/`, or a package of yours writes admin classes, add one `@source` line per directory to `resources/css/admin.css`. Without it, those classes compile to nothing.
-- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.7.2 ships no facade class behind it. Everything is configured through the panel class and page classes.
+- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.7.3 ships no facade class behind it. Everything is configured through the panel class and page classes.
 
 ## Next steps
 
 - [Register a panel](/docs/getting-started/panel): the class that owns the prefix, the guard and the pages.
-- [Authentication](/docs/getting-started/authentication): publish the sign-in and password reset pages with `admin:install --auth`.
+- [Authentication](/docs/getting-started/authentication): publish the sign-in, password reset and profile pages with `admin:install --auth`.
 - [Write your first page](/docs/getting-started/first-page): a table, a create form and an edit form, end to end.
