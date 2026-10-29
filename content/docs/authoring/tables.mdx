@@ -257,7 +257,7 @@ Each filter narrows the query by its own field name, using a mapping chosen by t
 | `daterange` | `>= from` and `<= to`, each end optional |
 | anything else, such as `relation` | throws — add `filterUsing()` |
 
-`filterUsing(fn ($query, $value) => ...)` replaces the default mapping. Use it whenever the filter name is not a column on the table's model: a virtual flag like `overdue` above, a condition on a relation with `whereHas()`, or a date range over a `datetime` column. The default daterange compares against the bare day, so on a timestamp column the last day is cut off at midnight; `whereDate()` inside `filterUsing()` avoids that. An empty value never reaches the query.
+`filterUsing(fn ($query, $value) => ...)` replaces the default mapping. Use it whenever the filter name is not a column on the table's model: a virtual flag like `overdue` above, a condition on a relation with `whereHas()`, or a date range over a `datetime` column. The default daterange compares against the bare day, so on a timestamp column the last day is cut off at midnight; `whereDate()` inside `filterUsing()` avoids that. An empty value never reaches the query. For a yes / no / any choice on a boolean, see [Yes / no / any filter](/docs/recipes/yes-no-any-filter).
 
 `filtersIn('modal')` (the default) puts the filters behind a button; `filtersIn('inline')` puts them in the toolbar. Any other value throws. `deferFilters()` waits for an explicit Apply before narrowing the query. Only declared filters are applied: a table without `filters()` ignores filter parameters in the request.
 
