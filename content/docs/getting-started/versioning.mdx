@@ -1,0 +1,50 @@
+---
+title: "Versioning and upgrades"
+description: "What a tbtop/admin version number promises: which releases can break a host, what counts as public API, how deprecated APIs are retired, and where the changelog and upgrade steps live."
+---
+
+`tbtop/admin` and `@tbtop/inertia-admin` ship together from one tag, so `__PINNED_VERSION__` means the same release on both sides. This page covers what each kind of release may change and how to upgrade without surprises. The full policy is [VERSIONING.md](https://github.com/DiVotek/tbtop/blob/main/VERSIONING.md) in the repository.
+
+## What a release may change
+
+Tabletop is pre-1.0. In 0.x, the middle number is the one that can break you:
+
+| Release | Example | May contain |
+| --- | --- | --- |
+| Patch | 0.7.2 → 0.7.3 | Fixes, new features and options, deprecations. Nothing that breaks a host. |
+| Minor | 0.7.x → 0.8.0 | All of the above, plus breaking changes. |
+
+From 1.0 on, the packages follow plain [SemVer](https://semver.org): only a major release breaks.
+
+Composer's `^0.7.3` and npm's `^0.7.3` both stop before 0.8.0, so a caret range never pulls in a breaking release. It can still let the two packages drift apart, which is why [Install](/docs/getting-started/install#install-the-packages) and [Deploy](/docs/getting-started/deploy) pin both to the same exact version.
+
+## What counts as public API
+
+A breaking change to any of these waits for the next minor:
+
+- The PHP API under `Tbtop\Admin\` that your app calls, extends or implements: the `S` builder, fields, columns, actions, tables, layout blocks, panel configuration, base pages, and the classes `admin:install` publishes.
+- Config keys in `config/tbtop-admin.php`, artisan commands and their options, route names, translation keys you can override, and the schema the package's migrations create.
+- Everything exported from `@tbtop/inertia-admin`, such as `registerBlock` and `defineFieldClient`, with their types.
+- The supported PHP, Laravel, Inertia and React versions. Dropping one is a breaking change.
+
+These can change in any release: anything marked `@internal`, the JSON the PHP side sends to the client (generate it with the DSL, never by hand), rendered markup, CSS class names and default styling.
+
+## Deprecations
+
+An API is deprecated before it is removed. A deprecated PHP method carries a `@deprecated` docblock that names its replacement and removal version, and raises `E_USER_DEPRECATED` when it runs. Removal never comes earlier than the next minor, and an API marked "removed in 1.0" stays until 1.0.
+
+Laravel sends those notices to its deprecations log. Turn it on in the host:
+
+```dotenv
+LOG_DEPRECATIONS_CHANNEL=daily
+```
+
+Read that log before moving to a new minor. Every call it lists is a candidate for removal.
+
+## Upgrading
+
+1. Read the [changelog](https://github.com/DiVotek/tbtop/blob/main/CHANGELOG.md). Each release lists its breaking changes first, then features and fixes.
+2. For a new minor, follow its section in [UPGRADE.md](https://github.com/DiVotek/tbtop/blob/main/UPGRADE.md).
+3. Bump `tbtop/admin` and `@tbtop/inertia-admin` to the same version in one commit, then rebuild the assets.
+
+Only the latest release gets fixes; there are no backports in 0.x.
