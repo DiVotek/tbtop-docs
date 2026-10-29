@@ -1,0 +1,95 @@
+---
+title: "Yes / no / any filter"
+description: "Filter a table on a boolean with three states — yes, no, or don't filter — using the radio and select filters that already exist."
+---
+
+A boolean column often needs a three-state filter: show only the published posts, only the drafts, or all of them. There is no dedicated ternary filter kind. The `radio` and `select` filters cover it, because both map to `where(name, value)` and an empty value never reaches the query.
+
+## Radio with an "Any" option
+
+A radio whose first option has an empty value is the whole recipe:
+
+```php
+use Tbtop\Admin\Dsl\Fields\Radio;
+
+$s->table('posts')
+    ->query(fn () => Post::query())
+    ->columns([/* ... */])
+    ->filters([
+        Radio::make('is_published')->label('Published')->inline()->options([
+            ['value' => '', 'label' => 'Any'],
+            ['value' => '1', 'label' => 'Yes'],
+            ['value' => '0', 'label' => 'No'],
+        ]),
+    ])
+    ->filtersIn('inline');
+```
+
+What each choice does:
+
+| Choice | Value sent | Query |
+|---|---|---|
+| Any | none | no condition, and the filter badge does not count it |
+| Yes | `"1"` | `where('is_published', '1')` |
+| No | `"0"` | `where('is_published', '0')` |
+
+"Any" is selected on first load, since an absent filter value and the empty option match. Picking it again clears the filter and drops it from the URL, so the user needs neither the Reset button nor a second control.
+
+`"1"` and `"0"` match a boolean column on MySQL, MariaDB, SQLite and PostgreSQL, so no cast is needed.
+
+<Callout type="warn" title="Write the values as strings">
+Option values are cast to strings on the wire. `false` becomes `""`, which is the "Any" value, so `['value' => false, 'label' => 'No']` silently stops filtering. Use `'1'` and `'0'`.
+</Callout>
+
+`Radio::boolean()` gives the Yes and No options without "Any". It is meant for forms; as a filter it has no way back to "don't filter" except Reset.
+
+## Select
+
+A select keeps the filter to one closed control, which suits a modal or a crowded toolbar:
+
+```php
+use Tbtop\Admin\Dsl\Fields\Select;
+
+Select::make('is_published')->label('Published')->options([
+    ['value' => '1', 'label' => 'Yes'],
+    ['value' => '0', 'label' => 'No'],
+]),
+```
+
+With nothing chosen, the select shows its placeholder and the filter is off. A select cannot hold an empty-value option: the dropdown it renders rejects one and the page throws. Once a value is picked, the only way back to "any" is the table's Reset button, which clears every filter.
+
+When the select needs an explicit "Any" entry, give that entry a value of its own and map it in `filterUsing()`:
+
+```php
+Select::make('is_published')->label('Published')->options([
+    ['value' => 'any', 'label' => 'Any'],
+    ['value' => '1', 'label' => 'Yes'],
+    ['value' => '0', 'label' => 'No'],
+])->filterUsing(fn ($query, $value) => match ($value) {
+    '1' => $query->where('is_published', true),
+    '0' => $query->where('is_published', false),
+    default => $query,
+}),
+```
+
+Unlike the radio's empty option, `any` is a real value: it stays in the URL and counts on the filter badge.
+
+## When yes and no are not a column
+
+`filterUsing()` also covers a yes/no that is a condition rather than a boolean column. The closure receives the raw string, `"1"` or `"0"`:
+
+```php
+Radio::make('verified')->label('Email verified')->inline()->options([
+    ['value' => '', 'label' => 'Any'],
+    ['value' => '1', 'label' => 'Yes'],
+    ['value' => '0', 'label' => 'No'],
+])->filterUsing(fn ($query, $value) => $value === '1'
+    ? $query->whereNotNull('email_verified_at')
+    : $query->whereNull('email_verified_at')),
+```
+
+The same shape works for a `whereHas()` on a relation, or for a nullable boolean column where `NULL` should count as "no": the default `where(name, '0')` leaves `NULL` rows out, so map "No" to `where(fn ($q) => $q->where('col', false)->orWhereNull('col'))`.
+
+## Why not the boolean filter
+
+A `Boolean` filter is a switch. Off at first load means "don't filter", but once the user turns it on and back off it sends `false` and narrows to "no". Use it for an "only X" flag, like the `overdue` example on [Tables](/docs/authoring/tables#filters), and the radio above for a real three-way choice.
