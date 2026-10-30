@@ -302,12 +302,12 @@ $s->relation('city_id')->label('City')
         [$s->text('name')->label('Name')->required()],
         fn (array $validated, array $deps) => City::create([
             ...$validated,
-            'country_id' => $deps['country_id'],
+            'country_id' => $deps['country_id'] ?? abort(422, 'Pick a country first.'),
         ]),
     )
 ```
 
-The label comes from the model's `labelKey()` column, as it does in search.
+`City::create()` is ordinary mass assignment, so `$fillable` (or `$guarded`) has to allow those attributes here too. The child picker stays disabled until a parent is chosen, but the endpoint can still be called without one, hence the guard. The label of the new record comes from the field's `labelKey()` column, as it does in search.
 
 ## Files and media
 
