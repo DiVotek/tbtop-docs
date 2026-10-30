@@ -166,7 +166,7 @@ The pages link to each other with `Page::url()` rather than hard-coded paths, so
 | `--view` | Adds a read-only `ViewPage` at `posts/{post}/view`, built from display blocks, and makes it the row link. Not allowed with `--simple` |
 | `--soft-deletes` | Trashed tabs, restore and force delete. Automatic when the model uses `SoftDeletes`, refused when it does not |
 | `--policy` | Guards the pages with the model's policy, see below |
-| `--tests` | Writes `tests/Feature/Admin/PostsTest.php`, a Pest test that opens the list page |
+| `--tests` | Writes `tests/Feature/Admin/PostsTest.php`: Pest CRUD cases on the [testing API](/docs/authoring/testing) |
 | `--group=` | The menu group. Default: `Main` |
 | `--no-nav` | Keeps the list page out of the menu |
 | `--force` | Overwrites existing files |
@@ -195,7 +195,7 @@ Without `--policy`, the command warns that anyone who can open the panel can cre
 - **The output is a starting point.** Labels are headlines of the column names, and the field set mirrors the table. Rename labels, reorder fields, add sections and drop what editors never touch: the trait is the one place to do it for both forms.
 - **json columns need a decision.** They come out as `// TODO` lines, because only you know whether the value is a key-value map, a repeater or tags.
 - **`--simple` resolves the record key itself.** A modal form does not yet know which record it edits, so the generated page has a small private `editedKey()` helper that reads it from the row. Leave it in place while the page has a unique rule.
-- **Tests are a stub.** The `--tests` file only opens the list page. Add create, edit and delete cases yourself.
+- **Generated tests need records.** The `--tests` cases build records with the model's factory. Without one, the file ends with a helper of sample values: check them against your rules, and fill in the `// TODO` key of any required relation whose model has no factory either. Under `--policy` a `Gate::before` stands in for the policy until you write it.
 
 ## Where to go next
 
