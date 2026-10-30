@@ -40,7 +40,7 @@ tbtop/admin v0.7.3 ships 26 field builders. Each is available as `$s->kind('name
 
 The 26th, `$s->inFilter('status')`, exists only for table filter bars. It is covered on [Tables](/docs/authoring/tables#filters).
 
-`boolean` renders a switch and `checkbox` a checkbox; both submit a boolean. `select` is one kind that changes behaviour with the methods you call: static `options()`, `searchable()`, a server-side `query()`, `creatable()` and `multiple()` all combine.
+`boolean` renders a switch and `checkbox` a checkbox; both submit a boolean. `select` is one kind that changes behaviour with the methods you call: static `options()`, `searchable()`, a server-side `query()`, `creatable()` and `multiple()` all combine. A `relation` can be `creatable()` as well.
 
 ## Common field API
 
@@ -277,6 +277,37 @@ $s->select('supplier_id')->label('Supplier')
         },
     )
 ```
+
+### Creating the related record: `relation()->creatable()`
+
+A `relation` takes `creatable()` too. A "+ Create" link under the picker opens a small form built from the fields you pass; on submit the record is saved and becomes the field's value, with its label shown straight away. Without a closure, the new record is a fresh instance of the `query()` model filled with the validated values, so the model's `$fillable` must cover them:
+
+```php
+$s->relation('customer_id')->label('Customer')
+    ->query(fn () => Customer::query()->orderBy('name'))
+    ->searchable()
+    ->creatable([
+        $s->text('name')->label('Name')->required()->rules('max:255'),
+        $s->text('email')->label('Email')->required()->rules('email|unique:customers,email'),
+    ])
+```
+
+The fields' rules validate the form on the server, and a failure keeps the dialog open with the messages under each field. When the new row needs more than the form gives it, such as the parent of a cascading picker, pass a closure. It receives the validated values and the declared `dependsOn()` parents, and must return the created model:
+
+```php
+$s->relation('city_id')->label('City')
+    ->dependsOn('country_id')
+    ->query(fn (array $deps) => City::query()->where('country_id', $deps['country_id'] ?? 0))
+    ->creatable(
+        [$s->text('name')->label('Name')->required()],
+        fn (array $validated, array $deps) => City::create([
+            ...$validated,
+            'country_id' => $deps['country_id'],
+        ]),
+    )
+```
+
+The label comes from the model's `labelKey()` column, as it does in search.
 
 ## Files and media
 
