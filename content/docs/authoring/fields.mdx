@@ -292,7 +292,7 @@ $s->relation('customer_id')->label('Customer')
     ])
 ```
 
-The fields' rules validate the form on the server, and a failure keeps the dialog open with the messages under each field. When the new row needs more than the form gives it, pass a closure. A relation with `dependsOn()` must have one: the default path refuses to save a row outside the parent's scope. It receives the validated values and the declared `dependsOn()` parents, and must return the created model:
+The fields' rules validate the form on the server, and a failure keeps the dialog open with the messages under each field. When the new row needs more than the form gives it, pass a closure. Two cases require one, and the default path refuses both rather than save a row outside the scope: a `query()` with a `where()`, and a relation with `dependsOn()`. It receives the validated values and the declared `dependsOn()` parents, and must return the created model:
 
 ```php
 $s->relation('city_id')->label('City')
