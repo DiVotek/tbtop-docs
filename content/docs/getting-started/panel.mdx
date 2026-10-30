@@ -125,6 +125,8 @@ return $panel
     ->id('admin')
     ->rootView('admin')
     ->brand('Acme')                       // name shown in the sidebar or top bar header
+    ->brandLogo(asset('images/logo.svg')) // image shown instead of the name
+    ->favicon(asset('favicon.svg'))       // browser-tab icon
     ->navigation('sidebar')               // 'sidebar' | 'topbar' | 'topbar-sidebar' | 'rail-sidebar'
     ->maxContentWidth('7xl')              // Tailwind max-w token: sm … 7xl, full, prose
     ->density('compact')                  // 'default' | 'compact'
@@ -137,6 +139,7 @@ return $panel
     ->defaultLocale('en');
 ```
 
+- **Brand.** `brandLogo()` replaces the brand name with an image; the name stays as its alt text. `darkModeBrandLogo()`, `brandLogoHeight()` and `favicon()` are in [Brand, logo and favicon](/docs/getting-started/customization#brand-logo-and-favicon).
 - **Navigation layout.** All four layouts collapse to a drawer on small screens. An unknown value throws.
 - **Content width.** Without `maxContentWidth()`, page content is capped at `5xl`.
 - **Theme.** `defaultThemeMode()` applies only when the visitor has no saved `tbtop_theme` cookie. If you pick a default other than `system`, change the inline script in `admin.blade.php` too; see [Dark mode](/docs/getting-started/customization#dark-mode). Colours, radius and fonts are not panel settings: they are CSS variables in `resources/css/admin.css`, covered in [Colours](/docs/getting-started/customization#colours).

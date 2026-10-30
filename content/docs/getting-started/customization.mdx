@@ -1,6 +1,6 @@
 ---
 title: "Customize the panel"
-description: "Change the admin's style preset, colours, fonts, dark mode, layout, header, sidebar, logo and interface text, and know which host file each change lives in."
+description: "Change the admin's style preset, colours, fonts, dark mode, layout, header, sidebar, logo, favicon and interface text, and know which host file each change lives in."
 ---
 
 The [panel class](/docs/getting-started/panel) decides what the admin is: its URL prefix, guard, pages and the shell settings around them. How the admin looks is split across a few files that `admin:install` published into your app. You own all of them. Nothing on this page needs a fork of either package.
@@ -11,7 +11,7 @@ The [panel class](/docs/getting-started/panel) decides what the admin is: its UR
 | Colours, radius, fonts | CSS variables and the Tailwind theme | `resources/css/admin.css` |
 | Web fonts, first-paint theme, `<head>` | The Blade root view | `resources/views/admin.blade.php` |
 | Custom blocks, fields, icons, badge colours, tab title | Client registrations in the admin entry | `resources/js/admin.tsx` |
-| Navigation layout, content width, density, dark mode policy, brand | `PanelConfig` methods | your `Panel` class |
+| Navigation layout, content width, density, dark mode policy, brand, logo, favicon | `PanelConfig` methods | your `Panel` class |
 | Header, sidebar, footer, logo | A `Chrome` subclass | e.g. `app/Admin/AdminChrome.php` |
 | Interface text (button labels, messages) | Laravel translation overrides | `lang/vendor/tbtop-admin/{locale}/admin.php` |
 
@@ -269,7 +269,7 @@ The building blocks made for the shell, all on `$s`:
 
 | Method | Renders |
 |---|---|
-| `logo()` | The brand text, linked to the panel root |
+| `logo()` | The `brandLogo()` image, or the brand text without one, linked to the panel root |
 | `navMenu()` | The navigation built from your pages' `nav()` and the panel's `navigationItems()` |
 | `userMenu(['locales' => false])` | The profile dropdown: user, your `userMenuItems()`, language switcher, sign out. The option hides the language section. |
 | `notifications()` | The notification bell (needs the `notifications` table, see [Register a panel](/docs/getting-started/panel#header-sidebar-and-footer)) |
@@ -281,19 +281,36 @@ Any other node works too: `flex`, `stack`, `displayText`, `displayImage`, your o
 
 Entries in the user menu and extra navigation links are panel settings, not chrome: `userMenuItems()` and `navigationItems()`. See [Navigation](/docs/authoring/navigation).
 
-### Brand and logo
+### Brand, logo and favicon
 
-`->brand('Acme')` sets the text `$s->logo()` shows. Without it, the logo shows the translated `nav.title` string, "Tabletop" in English.
+Four panel methods cover the admin's identity:
 
-`logo()` renders text only. For an image logo, put your own leaf block where `logo()` was. The PHP side is a node with the image URL, the alt text and the link target:
+```php title="app/Admin/AdminPanel.php"
+return $panel
+    ->brand('Acme')                                    // the name $s->logo() shows
+    ->brandLogo(asset('images/logo.svg'))              // an image instead of the name
+    ->darkModeBrandLogo(asset('images/logo-dark.svg')) // optional, used while the admin is dark
+    ->brandLogoHeight('2rem')                          // px, rem or em; default 1.5rem
+    ->favicon(asset('favicon.svg'));                   // the browser-tab icon
+```
+
+Without `brand()`, the logo shows the translated `nav.title` string, "Tabletop" in English. With `brandLogo()`, `$s->logo()` renders the image instead, still linked to the panel root, and the brand name becomes its alt text.
+
+- URLs are used as given. Wrap a file from `public/` in `asset()`, or pass any absolute URL.
+- The dark logo follows the light / dark switch without a reload. Set on its own, without `brandLogo()`, it changes nothing.
+- The logo shows wherever `logo()` does: the sidebar, the `topbar` bar, the `topbar-sidebar` bar and the mobile drawer. In the narrow `rail-sidebar` rail, and in the collapsed `topbar-sidebar` rail, it is fitted into a small square, so a square mark reads best there.
+- `brandLogoHeight()` takes a px, rem or em length. Anything else throws.
+- `favicon()` is set on every admin page, the way the page title is. Each panel can have its own. A panel without one keeps the icon from `admin.blade.php`.
+
+For a logo that is more than an image, such as a mark next to styled text, put your own leaf block where `logo()` was. The PHP side is a node with whatever the client needs:
 
 ```php title="app/Admin/AdminChrome.php"
 protected function sidebarItems(S $s): array
 {
     return [
         new Node('app:logo', [
-            'src' => asset('images/logo.svg'),
-            'alt' => config('app.name'),
+            'src' => asset('images/mark.svg'),
+            'name' => config('app.name'),
             'href' => url('admin'),
         ]),
         $s->navMenu(),
@@ -309,14 +326,15 @@ import { type RenderProps, registerBlock } from "@tbtop/inertia-admin";
 
 interface LogoOptions {
 	src: string;
-	alt: string;
+	name: string;
 	href: string;
 }
 
 function Logo({ options }: RenderProps<LogoOptions>) {
 	return (
-		<Link href={options.href} className="flex items-center">
-			<img src={options.src} alt={options.alt} className="h-8 w-auto" />
+		<Link href={options.href} className="flex items-center gap-2 font-semibold">
+			<img src={options.src} alt="" className="size-7" />
+			{options.name}
 		</Link>
 	);
 }
@@ -324,7 +342,7 @@ function Logo({ options }: RenderProps<LogoOptions>) {
 registerBlock<"app:logo", LogoOptions>({ kind: "app:logo", behavior: "leaf", render: Logo });
 ```
 
-The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the image logo appears there too. The `topbar-sidebar` layout is the exception: its top bar always renders the brand text itself, and your sidebar tree, logo included, sits beneath it. At v0.7.3 that brand text cannot be swapped for an image. For a logo that changes in dark mode, render two images and hide one with Tailwind's `dark:hidden` and `hidden dark:block`.
+The sidebar tree is also what the `topbar` layout and the mobile drawer show, so the custom logo appears there too. The `topbar-sidebar` layout is the exception: its top bar renders the stock logo itself, `brandLogo()` included, and your sidebar tree sits beneath it.
 
 ## Styling blocks from PHP
 
@@ -377,7 +395,7 @@ createInertiaApp({
 });
 ```
 
-The favicon and any other `<head>` tags go in `admin.blade.php`.
+The favicon is a panel setting, `favicon()`, see [Brand, logo and favicon](#brand-logo-and-favicon). Any other `<head>` tags go in `admin.blade.php`.
 
 ## Reference
 
