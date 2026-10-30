@@ -307,7 +307,9 @@ $s->relation('city_id')->label('City')
     )
 ```
 
-`City::create()` is ordinary mass assignment, so `$fillable` (or `$guarded`) has to allow those attributes here too. The child picker stays disabled until a parent is chosen, but the endpoint can still be called without one, hence the guard. The label of the new record comes from the field's `labelKey()` column, as it does in search.
+`City::create()` is ordinary mass assignment, so `$fillable` (or `$guarded`) has to allow those attributes here too. The child picker stays disabled until a parent is chosen, but the endpoint can still be called without one, hence the guard. The label of the new record comes from the field's `labelKey()` column (default `name`), as it does in search.
+
+The create endpoint is authorized like the rest of the page: anyone who can open the page can create through the picker. Pages are built per request, so to limit it, call `creatable()` only for users allowed to create, for example behind `auth()->user()->can('create', Customer::class)`; without it the link is not rendered and the endpoint answers 404.
 
 ## Files and media
 
