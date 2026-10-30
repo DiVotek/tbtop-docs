@@ -300,14 +300,17 @@ $s->relation('city_id')->label('City')
     ->query(fn (array $deps) => City::query()->where('country_id', $deps['country_id'] ?? 0))
     ->creatable(
         [$s->text('name')->label('Name')->required()],
-        fn (array $validated, array $deps) => City::create([
-            ...$validated,
-            'country_id' => $deps['country_id'] ?? abort(422, 'Pick a country first.'),
-        ]),
+        function (array $validated, array $deps) {
+            // $deps is client input: resolve the parent through its own query.
+            $country = Country::query()->find($deps['country_id'] ?? 0)
+                ?? abort(422, 'Pick a country first.');
+
+            return $country->cities()->create($validated);
+        },
     )
 ```
 
-`City::create()` is ordinary mass assignment, so `$fillable` (or `$guarded`) has to allow those attributes here too. The child picker stays disabled until a parent is chosen, but the endpoint can still be called without one, hence the guard. The label of the new record comes from the field's `labelKey()` column (default `name`), as it does in search.
+`$deps` comes from the request: it is filtered to the `dependsOn()` names but not validated, so resolve the parent through a query (and any scope the user is limited to) rather than writing the raw key. The child picker stays disabled until a parent is chosen, but the endpoint can be called without one, hence the 422. `create()` is ordinary mass assignment, so `$fillable` (or `$guarded`) has to allow the attributes here too. The label of the new record comes from the field's `labelKey()` column (default `name`), as it does in search.
 
 The create endpoint is authorized like the rest of the page: anyone who can open the page can create through the picker. Pages are built per request, so to limit it, call `creatable()` only for users allowed to create, for example behind `auth()->user()->can('create', Customer::class)`; without it the link is not rendered and the endpoint answers 404.
 
