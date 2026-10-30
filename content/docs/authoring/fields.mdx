@@ -280,7 +280,7 @@ $s->select('supplier_id')->label('Supplier')
 
 ### Creating the related record: `relation()->creatable()`
 
-A `relation` takes `creatable()` too. A "+ Create" link under the picker opens a small form built from the fields you pass; on submit the record is saved and becomes the field's value, with its label shown straight away. Without a closure, the new record is a fresh instance of the `query()` model filled with the validated values, so the model's `$fillable` must cover them:
+A `relation` takes `creatable()` too. A "+ Create" link under the picker opens a small form built from the fields you pass; on submit the record is saved and becomes the field's value, with its label shown straight away. Without a closure, the new record is a fresh instance of the `query()` model filled with the validated values, so the model's `$fillable` must cover them. Only the model class comes from `query()`: its `where()` constraints (a tenant, an `active` flag) are not copied onto the new row, so a scoped query needs the closure shown below.
 
 ```php
 $s->relation('customer_id')->label('Customer')
