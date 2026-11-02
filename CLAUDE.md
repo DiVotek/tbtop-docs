@@ -54,7 +54,7 @@ The CMS ships for Laravel (`tbtop/cms`) and Node (`@tbtop/cms`) under one
 version, `CMS_TAG` in `app/lib/shared.ts`. Concepts and guides are one page
 per topic with code in `<StackTabs>` (Laravel / Node, one persisted choice
 for the whole site); install, reference and upgrading are split per stack.
-Every Node page carries `<NodeAlpha />` while the Node package is in alpha; a
+Every Node-only page carries `<NodeAlpha />` while the Node package is in alpha; a
 feature only one stack has gets `<StackOnly stack="…" />`. Reference pages
 are synced from the packages, descriptive pages are written here.
 

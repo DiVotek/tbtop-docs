@@ -8,7 +8,7 @@ const STACKS = ["Laravel", "Node"];
 /**
  * Laravel / Node code tabs for the CMS guides. Every instance shares one
  * group and persists it, so a reader picks a stack once and every page
- * after that opens on it. Children are `<Tab value="Laravel">` / `<Tab value="Node">`.
+ * after that opens on it. Children are `<StackTab value="Laravel">` / `<StackTab value="Node">`.
  */
 export function StackTabs({ children }: { children: ReactNode }) {
 	return (
