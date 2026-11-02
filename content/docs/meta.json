@@ -1,12 +1,3 @@
 {
-	"title": "Documentation",
-	"pages": [
-		"getting-started",
-		"authoring",
-		"recipes",
-		"extending",
-		"integrations",
-		"packages",
-		"api"
-	]
+	"pages": ["(admin)", "cms"]
 }

@@ -1,0 +1,16 @@
+{
+	"title": "Guides",
+	"pages": [
+		"blocks",
+		"page-types",
+		"placement",
+		"seeding",
+		"collections",
+		"links",
+		"seo",
+		"llms-txt",
+		"forms",
+		"access",
+		"pages-api"
+	]
+}
