@@ -21,16 +21,16 @@ export const gitConfig = {
 export const PINNED_TAG = "v0.7.3";
 
 /**
- * The tbtop/spatie-media-library release content/docs/(admin)/packages/media-library.mdx
- * describes. The package releases independently of tbtop/admin.
- */
-/**
  * The tbtop/cms release content/docs/cms describes. Both CMS packages
  * (Composer tbtop/cms, npm @tbtop/cms) share this one version, which is
  * independent of tbtop/admin's PINNED_TAG.
  */
 export const CMS_TAG = "v0.10.0";
 
+/**
+ * The tbtop/spatie-media-library release content/docs/(admin)/packages/media-library.mdx
+ * describes. The package releases independently of tbtop/admin.
+ */
 export const MEDIA_LIBRARY_TAG = "v0.3.0";
 
 // Own Umami site, not tbtop.dev's; `domains` keeps dev and previews out of stats.
