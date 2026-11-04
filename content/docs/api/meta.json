@@ -1,4 +1,13 @@
 {
 	"title": "API Reference",
-	"pages": ["builder", "fields", "blocks", "tables", "actions", "notifications", "panel"]
+	"pages": [
+		"builder",
+		"fields",
+		"blocks",
+		"tables",
+		"actions",
+		"notifications",
+		"panel",
+		"testing"
+	]
 }

@@ -11,7 +11,7 @@ The full method list for every kind is in the [Fields API reference](/docs/api/f
 
 ## Field kinds by purpose
 
-tbtop/admin v0.7.3 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
+tbtop/admin v0.8.1 ships 26 field builders. Each is available as `$s->kind('name')` and as a static `make()` on its class in `Tbtop\Admin\Dsl\Fields`. Twenty-five of them are form inputs:
 
 | Purpose | `S` factory | Value it submits |
 |---|---|---|
@@ -95,7 +95,11 @@ $s->grid(['cols' => ['sm' => 1, 'md' => 2]], [
 
 **Showing, hiding, dropping.** `hiddenIf()` and `disabledIf()` are evaluated in the browser; a hidden field still submits its value and its rules still run. `when(false)` is the server-side switch: the field never reaches the page, and its endpoints (upload, relation search, select options) answer 404. Both are covered in [Forms](/docs/authoring/forms#conditional-fields), with the rest of the [dynamic form tools](/docs/authoring/forms#dynamic-forms).
 
-**Copy button.** `copyable()` is declared on every field, but at v0.7.3 only the `text` input renders the button. It copies the current value.
+**Values decided per request.** Presentation setters (`label`, `helperText`, `tooltip`, `default`, `disabled`, `placeholder`, `mask`, `step`, `min`/`max`, `maxItems`/`minItems`/`defaultItems`, `convertTo`/`quality`, `variant`, `copyable`) also take a closure with no arguments, such as `->label(fn () => __('posts.title'))` or `->disabled(fn () => ! auth()->user()->isAdmin())`. The server resolves it every time the field is read, and the page receives only the result, so keep it cheap and free of side effects. A result of the wrong type throws. Setters that feed a server rule (`maxFiles`, `required`, `multiple`, `disk`) take plain values only. `disabled()` sets the initial disabled state; the value still submits, so it is not access control.
+
+**Mobile keyboard.** `inputMode()` on `text` and `number` sets the HTML `inputmode` attribute, so a phone shows the right keyboard: `$s->text('price')->inputMode('decimal')`, `$s->text('phone')->mask('(999) 999-9999')->inputMode('tel')`. Allowed values are `none`, `text`, `decimal`, `numeric`, `tel`, `search`, `email` and `url`; anything else throws. It is a hint only: it does not validate the value and is not derived from `rules()` or `mask()`, so set both. A `number` field sets no mode by default, because the iOS decimal keypad has no minus key.
+
+**Copy button.** `copyable()` is declared on every field, but at v0.8.1 only the `text` input renders the button. It copies the current value.
 
 **Escape hatches.** `set('key', $value)` writes a raw option into the field's node and `meta()` a raw node meta key; neither is validated, so a typo ships silently. Use them only for a client option that has no fluent method yet, such as an option read by your own [client component](/docs/extending/client-components).
 

@@ -3,7 +3,7 @@ title: "Versioning and upgrades"
 description: "What a tbtop/admin version number promises: which releases can break a host, what counts as public API, how deprecated APIs are retired, and where the changelog and upgrade steps live."
 ---
 
-`tbtop/admin` and `@tbtop/inertia-admin` ship together from one tag, so `__PINNED_VERSION__` means the same release on both sides. This page covers what each kind of release may change and how to upgrade without surprises. The full policy is [VERSIONING.md](https://github.com/DiVotek/tbtop/blob/main/VERSIONING.md) in the repository.
+`tbtop/admin` (Packagist), `@tbtop/inertia-admin` (npm) and `@tbtop/admin` (npm, the [Node.js](/docs/packages/node) server) ship together from one tag, so `__PINNED_VERSION__` means the same release on every side. This page covers what each kind of release may change and how to upgrade without surprises. The full policy is [VERSIONING.md](https://github.com/DiVotek/tbtop/blob/main/VERSIONING.md) in the repository.
 
 ## What a release may change
 
@@ -11,12 +11,14 @@ Tabletop is pre-1.0. In 0.x, the middle number is the one that can break you:
 
 | Release | Example | May contain |
 | --- | --- | --- |
-| Patch | 0.7.2 → 0.7.3 | Fixes, new features and options, deprecations. Nothing that breaks a host. |
-| Minor | 0.7.x → 0.8.0 | All of the above, plus breaking changes. |
+| Patch | 0.8.1 → 0.8.2 | Fixes, new features and options, deprecations. Nothing that breaks a host. |
+| Minor | 0.8.x → 0.9.1 | All of the above, plus breaking changes. |
+
+The 0.8, 0.9 and 0.10 lines start at `.1`: 0.8.1 is the first 0.8 release, and no `.0` of those three lines is ever published. From 0.11.0 the numbering is the usual one.
 
 From 1.0 on, the packages follow plain [SemVer](https://semver.org): only a major release breaks.
 
-Composer's `^0.7.3` and npm's `^0.7.3` both stop before 0.8.0, so a caret range never pulls in a breaking release. It can still let the two packages drift apart, which is why [Install](/docs/getting-started/install#install-the-packages) and [Deploy](/docs/getting-started/deploy) pin both to the same exact version.
+Composer's `^0.8.1` and npm's `^0.8.1` both stop before the 0.9 line, so a caret range never pulls in a breaking release. It can still let the two packages drift apart, which is why [Install](/docs/getting-started/install#install-the-packages) and [Deploy](/docs/getting-started/deploy) pin them to the same exact version.
 
 ## What counts as public API
 

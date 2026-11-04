@@ -3,14 +3,14 @@ title: "Install"
 description: "Add tbtop/admin and its React client to an existing Laravel app, publish the host wiring, and finish the four steps the installer leaves to you."
 ---
 
-Tabletop installs into a Laravel application you already have. It ships as two packages released in lockstep from one tag: `tbtop/admin` on Packagist (the PHP DSL, controllers and routes) and `@tbtop/inertia-admin` on npm (the React client that renders what the DSL describes). You install both, run one Artisan command that publishes three host files, then make four small edits in files the package deliberately does not touch.
+Tabletop installs into a Laravel application you already have. It ships as two packages released in lockstep from one tag: `tbtop/admin` on Packagist (the PHP DSL, controllers and routes) and `@tbtop/inertia-admin` on npm (the React client that renders what the DSL describes). A third package from the same tag, `@tbtop/admin`, is the same admin for a Node.js or Bun server instead of Laravel: see [Node.js](/docs/packages/node). You install both, run one Artisan command that publishes three host files, then make four small edits in files the package deliberately does not touch.
 
 ## Requirements
 
 | | Version | Why |
 |---|---|---|
 | PHP | 8.4 or newer | `tbtop/admin` requires `php: ^8.4` |
-| Laravel | 11, 12 or 13 | `illuminate/contracts: ^11.0 \|\| ^12.0 \|\| ^13.0` |
+| Laravel | 12 or 13 | `illuminate/contracts: ^12.0 \|\| ^13.0` |
 | Inertia (server) | `inertiajs/inertia-laravel` 3.1+ | Pulled in by Composer |
 | React | 19 | Peer dependency of the client |
 | Inertia (client) | `@inertiajs/react` 3 | The admin entry calls `createInertiaApp` |
@@ -183,7 +183,7 @@ resolve: async (name) => {
 
 - **Only one Inertia app per page load.** The admin bundle resolves only `admin/*` components. An Inertia visit from an admin page to a page rendered by your main `app.tsx`, or the other way round, fails in the browser. Keep screens that admin users reach inside the panel, including the login page. Redirects that leave the panel should be full page loads.
 - **Classes written in PHP need an `@source` line.** If your pages live outside `app/`, or a package of yours writes admin classes, add one `@source` line per directory to `resources/css/admin.css`. Without it, those classes compile to nothing.
-- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.7.3 ships no facade class behind it. Everything is configured through the panel class and page classes.
+- **No Facade to import.** The package's `composer.json` declares an `Admin` alias, but v0.8.1 ships no facade class behind it. Everything is configured through the panel class and page classes.
 
 ## Next steps
 

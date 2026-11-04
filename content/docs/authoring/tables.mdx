@@ -89,7 +89,22 @@ $s->table('categories')
 
 **Translatable values.** `->translatable()` on a column reads a locale map and shows the default content locale, falling back to the first non-empty locale. See [translatable fields](/docs/authoring/fields#translatable-fields).
 
-**Presentation.** `align()`, `width()`, `wrap()`, `truncate()`, `noWrap()`, `muted()`, `description()`, `tooltip()`, `prefix()`/`suffix()` and `copyable()` adjust a cell without changing its value.
+**Presentation.** `align()`, `width()`, `wrap()`, `truncate()`, `noWrap()`, `lineClamp()`, `muted()`, `description()`, `tooltip()`, `prefix()`/`suffix()` and `copyable()` adjust a cell without changing its value.
+
+**Line breaks.** A cell wraps by default. Four modes change how; they are mutually exclusive, and the last call wins:
+
+| Method | Cell |
+|---|---|
+| `wrap()` | wraps onto as many lines as it needs (the default) |
+| `truncate()` | one line, cut with an ellipsis |
+| `noWrap()` | one line, never cut: the column widens instead |
+| `lineClamp(2)` | wraps onto at most 2 lines, with an ellipsis on the last |
+
+```php
+Column::make('intro')->label('Intro')->lineClamp(2)->width('320px'),
+```
+
+`lineClamp()` cuts the value only: a `description()` still shows under it in full. On a group column it applies to each child that sets no line-break mode of its own. The cut text is not repeated on hover, so add `tooltip(fn ($row) => …)` when the full text matters. Without `width()` the column may get enough room that it never reaches the limit. `lineClamp(0)` throws `InvalidArgumentException`.
 
 **Grouped columns.** `group([...])` stacks several columns under one header and in one cell:
 
@@ -259,7 +274,21 @@ Each filter narrows the query by its own field name, using a mapping chosen by t
 
 `filterUsing(fn ($query, $value) => ...)` replaces the default mapping. Use it whenever the filter name is not a column on the table's model: a virtual flag like `overdue` above, a condition on a relation with `whereHas()`, or a date range over a `datetime` column. The default daterange compares against the bare day, so on a timestamp column the last day is cut off at midnight; `whereDate()` inside `filterUsing()` avoids that. An empty value never reaches the query. For a yes / no / any choice on a boolean, see [Yes / no / any filter](/docs/recipes/yes-no-any-filter).
 
-`filtersIn('modal')` (the default) puts the filters behind a button; `filtersIn('inline')` puts them in the toolbar. Any other value throws. `deferFilters()` waits for an explicit Apply before narrowing the query. Only declared filters are applied: a table without `filters()` ignores filter parameters in the request.
+`filtersIn()` picks one of three layouts, and any other value throws:
+
+- `'modal'` (the default): a Filters button opens a dialog, shaped by `filtersFormColumns()` and `filtersFormWidth()`.
+- `'inline'`: the fields sit in the toolbar row; `filtersFormColumns()` puts them on a grid.
+- `'aside'`: a panel left of the table, one field per row, with a Filters button in the toolbar that hides and shows it. Each user's choice is remembered per table in the browser; `filtersCollapsed()` sets only the first-visit default. Below the `lg` breakpoint the button opens the same fields in a side sheet instead.
+
+```php
+$s->table('orders')
+    ->filters([$s->select('status')->options(OrderStatus::class)])
+    ->filtersIn('aside')
+    ->filtersCollapsed();
+```
+
+**Active-filter chips.** Every applied filter shows as a chip under the toolbar, such as `Status: Published, Draft`, with a × that drops that one filter. Two or more chips add a "Clear filters" link that drops them all and keeps the search. There is no PHP API: a chip reads the filter's `label()` plus its value, with option labels for select, in and radio filters, formatted dates and ranges, and the label alone for a boolean that is on. With `deferFilters()` a chip appears only after Apply. An `embedded()` table shows no chips.
+ `deferFilters()` waits for an explicit Apply before narrowing the query. Only declared filters are applied: a table without `filters()` ignores filter parameters in the request.
 
 ## Tabs
 
@@ -369,7 +398,7 @@ For a change the page itself makes, the `refreshTable` effect is still the tool;
 ## More table features
 
 - **Reordering.** `reorderable('sort_order')` adds drag handles and writes the new order to that column. It also becomes the default sort.
-- **Grouping.** `groups('status')` puts a header row above each run of rows sharing a value. It requires `defaultSort('status', ...)` first, groups only within the current page, and is off while reordering.
+- **Grouping.** `groups('status')` puts a header row above each run of rows sharing a value. It requires `defaultSort('status', ...)` first, groups only within the current page, and is off while reordering. `groups('status', collapsible: true)` turns each header into a toggle that hides or shows its group, and `collapsed: true` starts every group closed (it implies `collapsible`). The open or closed state survives a refetch, poll or page change, and resets on a browser reload.
 - **Soft deletes.** `softDeletes($s, Order::class)` adds Active / Trashed / All tabs and restore and force-delete row and bulk actions. Call it after your own `tabs()`, `rowActions()` and `bulkActions()`; it merges into them. The three tabs are prepended, so Active becomes the default tab instead of your first one. Pass `['tabs' => false]`, `['rowActions' => false]` or `['bulkActions' => false]` as the third argument to skip a part.
 - **Embedding.** `embedded()` drops the toolbar, filters and pagination footer, for a small table inside a card. `toolbar(false)`, `searchInput(false)` and `columnToggle(false)` hide less.
 - **Empty state.** `emptyState('No orders yet', 'Orders appear here once a customer checks out.', 'package')` replaces the default message.

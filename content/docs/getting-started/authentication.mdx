@@ -1,15 +1,16 @@
 ---
 title: "Authentication"
-description: "Publish the sign-in, password reset and profile pages, send guests to them, and rely on the logout route and signed-in user the package provides."
+description: "Publish the sign-in, password reset, email verification and profile pages, add two-factor sign-in, send guests to them, and rely on the logout route and signed-in user the package provides."
 ---
 
 Every panel page runs behind `auth:{guard}`, except pages that replace their middleware to stay public, such as the auth pages below. The package handles the parts that only make sense inside a panel:
 
 - **Sign-out.** Every panel answers `POST {prefix}/logout`, which the user menu posts to.
 - **The signed-in user.** The panel's guard user is shared as the `tbtop.user` Inertia prop, which the header's user menu reads.
-- **Sign-in, password reset and the profile page.** These ship as base pages. `admin:install --auth` publishes them into your app, where you own them.
+- **Sign-in, password reset, email verification and the profile page.** These ship as base pages. `admin:install --auth` publishes them into your app, where you own them.
+- **Two-factor sign-in.** `admin:install --2fa` adds a TOTP challenge with recovery codes and a two-factor section on the profile page.
 
-The host app still owns the rest of authentication: the user model, the guard, the password broker, and anything beyond sign-in, reset and the profile page. Registration, email verification and a second factor do not ship. See [What stays yours](#what-stays-yours).
+The host app still owns the rest of authentication: the user model, the guard, the password broker, and anything beyond the pages above. Registration does not ship. See [What stays yours](#what-stays-yours).
 
 ## Publish the auth pages
 
@@ -17,7 +18,7 @@ The host app still owns the rest of authentication: the user model, the guard, t
 php artisan admin:install --auth
 ```
 
-This writes four files to `app/Admin/Pages/Auth/`:
+This writes five files to `app/Admin/Pages/Auth/`:
 
 | File | Path | Route name |
 |---|---|---|
@@ -25,6 +26,7 @@ This writes four files to `app/Admin/Pages/Auth/`:
 | `ForgotPasswordPage.php` | `{prefix}/forgot-password` | `tbtop.{panel}.forgot-password-page` |
 | `ResetPasswordPage.php` | `{prefix}/reset-password/{token}` | `tbtop.{panel}.reset-password-page` |
 | `ProfilePage.php` | `{prefix}/profile` | `tbtop.{panel}.profile-page` |
+| `EmailVerificationPage.php` | `{prefix}/verify-email` | `tbtop.{panel}.email-verification-page` |
 
 Each file is an empty subclass of a package base page in `Tbtop\Admin\Auth`:
 
@@ -36,7 +38,7 @@ namespace App\Admin\Pages\Auth;
 class LoginPage extends \Tbtop\Admin\Auth\LoginPage {}
 ```
 
-The behaviour lives in the base, so fixes arrive with `composer update`. The file is yours: override a hook in it to change the screen, or delete it to drop the screen. Deleting `ForgotPasswordPage` and `ResetPasswordPage` drops password reset, and the login page stops showing its "Forgot your password?" link. Deleting `ProfilePage` drops the profile page and its entry in the user menu.
+The behaviour lives in the base, so fixes arrive with `composer update`. The file is yours: override a hook in it to change the screen, or delete it to drop the screen. Deleting `ForgotPasswordPage` and `ResetPasswordPage` drops password reset, and the login page stops showing its "Forgot your password?" link. Deleting `ProfilePage` drops the profile page and its entry in the user menu. Deleting `EmailVerificationPage` drops the [verification check](#email-verification).
 
 How the command behaves:
 
@@ -121,34 +123,9 @@ class LoginPage extends \Tbtop\Admin\Auth\LoginPage
 
 The throttle key uses the first value in `credentials()` other than `password`, so keep the login field first. To sign in by something other than email, also rebuild `view()` (see [Rebuild the screen](#rebuild-the-screen)): the default form's field is named `email` and validated as an email address.
 
-### Add a second factor
+### Run code after sign-in
 
-`afterAuthenticated()` is where a second factor hooks in. Sign the user back out, remember who they are in the session, and send them to a challenge page you write as an ordinary public DSL page:
-
-```php title="app/Admin/Pages/Auth/LoginPage.php"
-use App\Models\User;
-use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Support\Facades\Auth;
-use Tbtop\Admin\Actions\ActionCtx;
-
-class LoginPage extends \Tbtop\Admin\Auth\LoginPage
-{
-    protected function afterAuthenticated(Authenticatable $user, ActionCtx $ctx): ?string
-    {
-        if (! $user instanceof User || ! $user->hasTwoFactorEnabled()) {
-            return null;
-        }
-
-        Auth::guard(static::panel()->guard())->logout();
-        $ctx->request->session()->put('auth.2fa.user_id', $user->getAuthIdentifier());
-
-        // Route names are tbtop.{panel id}.{kebab-cased class name}.
-        return route('tbtop.'.static::panel()->id().'.two-factor-challenge-page', absolute: false);
-    }
-}
-```
-
-The challenge page verifies the code, then loads the parked user, signs them in on the panel's guard with `Auth::guard(...)->login($user)`, calls `$request->session()->regenerate()` so the session id changes at sign-in, and forgets the parked id. Rate-limit the code check with Laravel's `RateLimiter` the way the login page does, because a short code is quick to guess. Return `false` from its static `mcp()` too, as the auth pages do, so an [MCP](/docs/integrations/mcp) agent never sees the code check. The package ships no 2FA backend, so `hasTwoFactorEnabled()` and the code check are yours.
+`afterAuthenticated()` runs once the user is signed in, and a URL it returns is where the login sends them. With [two-factor sign-in](#two-factor-sign-in) on, it runs for a user with a factor only after the code passes, and its URL wins over the challenge page's own `redirectTo()`.
 
 ### Rebuild the screen
 
@@ -217,7 +194,35 @@ class ProfilePage extends \Tbtop\Admin\Auth\ProfilePage
 
 A new rule only validates and saves the field; override `profileForm()` as well to show an input for it.
 
-The page needs an Eloquent user model with `name`, `email` and `password` attributes. When the model implements `MustVerifyEmail`, a changed email is marked unverified, but no verification mail is sent: the package has no verification flow, so sending the link is up to your app.
+The page needs an Eloquent user model with `name`, `email` and `password` attributes. When the model implements `MustVerifyEmail`, a changed email is marked unverified and, while the panel serves an `EmailVerificationPage`, a link is mailed to the new address.
+
+## Email verification
+
+`EmailVerificationPage` is opt-in twice: the panel serves the published subclass, and the user model implements Laravel's `MustVerifyEmail`, with an `email_verified_at` column. Then an unverified user is sent from every panel page to `{prefix}/verify-email`, and a JSON request gets a 403. The page itself, the profile page (to fix a mistyped address) and logout stay open.
+
+- **The page.** It has no panel chrome: a button mails the link, limited to six a minute per user (`maxAttempts()`), plus links to the profile and sign-out.
+- **The link.** A temporary signed URL, valid for `auth.verification.expire` minutes (60 by default), sent as `VerifyEmailNotification`. Opening it marks the user verified, fires Laravel's `Verified` event and returns them to the page they were sent away from. A bad signature, another user's link or a link for an old address answers 403. Laravel's `VerifyEmail::createUrlUsing()` and the skeleton's `verification.*` routes stay yours and are not used.
+- **Nothing is mailed at sign-in.** A user an admin created asks for the link from the page. To send one from your own code, such as after a registration you wrote: `EmailVerificationPage::sendVerificationLink($user)`. It returns `false` when the current panel serves no subclass.
+
+The check is `RequireVerifiedEmail`, the last middleware of `authStack()`. Delete the page and the check goes with it.
+
+## Two-factor sign-in
+
+```bash
+composer require pragmarx/google2fa bacon/bacon-qr-code
+php artisan admin:install --2fa
+php artisan migrate
+```
+
+`--2fa` publishes the auth pages plus `TwoFactorChallengePage` (`{prefix}/two-factor-challenge`) and a migration for the user table. The columns are Fortify's (`two_factor_secret`, `two_factor_recovery_codes`, `two_factor_confirmed_at`) plus `two_factor_last_used_step`. The migration adds only the missing ones, so users who enrolled through Fortify keep their factor. Add the two secret columns to the user model's `$hidden`, and give them no cast: the package encrypts them itself.
+
+While the panel serves the challenge page:
+
+- **The profile page** shows a "Two-factor authentication" section. The user turns it on with their current password, scans the QR code and confirms with the first code. Eight recovery codes are shown once. New codes and turning it off both take a code.
+- **The login** checks the password but does not sign in a user who has a factor. It parks them for the challenge, which takes a TOTP or a recovery code, five tries a minute before the password is asked again. A parked sign-in lasts ten minutes and ends if the password changes. The "remember me" choice carries over.
+- **`RequireTwoFactor`** in `authStack()` sends any session that has not passed the challenge, such as one a remember cookie restored, to the challenge page, and answers a JSON request with 403. Logout stays open, and a page whose own `middleware()` leaves out `authStack()` opts out.
+
+The pass belongs to the user who earned it in this session. Delete `TwoFactorChallengePage` to turn it all off.
 
 ## Choose the password broker
 
@@ -251,7 +256,7 @@ The client reads the user only from `tbtop.user`. An `auth.user` prop shared fro
 
 ## What stays yours
 
-- **Registration, email verification and a second factor.** Write them as public DSL pages, and add a second-factor setup card to the profile page through its `view()`. The [second factor](#add-a-second-factor) section shows where 2FA hooks in.
+- **Registration and passkeys.** Neither ships. Write registration as a public DSL page, and call `EmailVerificationPage::sendVerificationLink($user)` after it creates the user.
 - **Access control.** Signing in proves who the user is, not that they belong in the admin. Limit the panel to staff with [access control](/docs/getting-started/panel#access-control).
 - **An existing login screen.** If you keep a React login screen in your app's own Inertia bundle, such as a Breeze screen, skip `--auth` and end its sign-in with a full page load into the panel: return `Inertia::location('/admin')` from the controller. A plain `redirect()` is followed inside your app's bundle, which cannot render admin pages. The logout route and the shared user work either way.
 

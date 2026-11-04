@@ -1,0 +1,79 @@
+---
+title: "Node.js"
+description: "@tbtop/admin: the same admin DSL, wire format and React client on a Node.js, Bun or Cloudflare Workers server instead of Laravel."
+---
+
+`@tbtop/admin` is the Tabletop admin for a TypeScript server. It ports the PHP DSL with the same builder and method names, speaks the same wire format, and renders through the same React client, `@tbtop/inertia-admin`. It ships from the same tag as `tbtop/admin`, so `__PINNED_VERSION__` is the same release on every side.
+
+It runs on Node 22+, Bun and Cloudflare Workers (`nodejs_compat`). The package is ESM only. Its full host guide lives in the repository: [packages/node/docs](https://github.com/DiVotek/tbtop/tree/main/packages/node/docs).
+
+## Install
+
+```bash
+npm install --save-exact @tbtop/admin@__PINNED_VERSION__ @tbtop/inertia-admin@__PINNED_VERSION__
+npm install @inertiajs/react react react-dom
+```
+
+Keep `@tbtop/admin` and `@tbtop/inertia-admin` on the same version, as with the PHP package.
+
+| Import | What |
+|---|---|
+| `@tbtop/admin` | DSL, `createAdmin`, `createPanels`, sessions, Inertia helpers, `memoryDisk`, `r2Disk` |
+| `@tbtop/admin/kysely` | `kyselyDriver`, `kyselyRules`, `kyselyNotifications` (peer: `kysely`) |
+| `@tbtop/admin/memory` | `memoryDriver`, `memoryQuery` for tests and prototypes |
+| `@tbtop/admin/local-disk` | `localDisk(root, baseUrl)`, uploads on the filesystem |
+| `@tbtop/admin/sharp` | `sharpImages(sharp)`, image conversion with your own `sharp` |
+| `@tbtop/admin/testing` | `testAdmin()`, the [testing API](/docs/authoring/testing) |
+
+## A page and a panel
+
+A page is a plain object. `path` is relative to the panel prefix and takes `$param` segments. `view` runs on every request with a fresh `S`, so the PHP examples on this site read the same with `->method()` as `.method()`.
+
+```ts
+import { Column, createAdmin, definePage, rootView, viteTags } from "@tbtop/admin";
+import { kyselyDriver } from "@tbtop/admin/kysely";
+
+const posts = definePage({
+	path: "posts",
+	title: "Posts",
+	nav: { group: "Content", label: "Posts", icon: "file-text" },
+	view: (s) =>
+		s.table("posts")
+			.columns([Column.make("title").sortable().searchable()])
+			.query(() => db.selectFrom("posts").selectAll()),
+});
+
+export const admin = createAdmin({
+	prefix: "/admin",
+	pages: [posts, login],
+	driver: kyselyDriver(db),
+	loginPath: "/admin/login",
+	rootView: rootView({ head: viteTags({ entry: "src/client.tsx", devServer: "http://localhost:5173" }) }),
+});
+```
+
+`admin.handle(request)` is a Web `fetch` handler. It answers every URL under the prefix and returns `null` for the rest, so it mounts in `Bun.serve`, Hono, Elysia or a Workers `fetch` the same way:
+
+```ts
+Bun.serve({ fetch: async (req) => (await admin.handle(req)) ?? new Response("Not found", { status: 404 }) });
+```
+
+The client boots with the same `createInertiaApp` call a Laravel host uses.
+
+## What it includes
+
+- **The DSL**: every PHP builder and method, held to the PHP package by a byte-equal copy of the contract fixture and a method-parity test.
+- **The endpoints**: pages, tables, actions, forms, options, uploads, notifications, locales, logout and several panels from one handler (`createPanels`).
+- **The panel**: navigation, chrome, the ⌘K palette, the four navigation layouts, appearance and branding.
+- **[MCP](/docs/integrations/mcp)**: the same `search`, `query` and `execute` tools, with `mcp: { authenticate }` resolving the user from a token.
+- **Validation** with Laravel's rule names and messages. `unique`, `exists` and other database rules are host rules you supply.
+
+## What differs from Laravel
+
+- **Auth is yours.** The package publishes no login, profile, verification or two-factor page and has no guard. A login page writes the user into the session.
+- **Data goes through a `QueryDriver`**, not Eloquent: Kysely and an in-memory driver ship. Model binding and soft-delete tabs are your code.
+- **`relation()->creatable()` needs its closure**, because the driver does not insert rows.
+- **No media library**: the `upload` field only, with optional image conversion through `sharp`.
+- **Presentation closures**: `view` already runs per request, so pass computed values. Only `disabled()` takes a closure, as in PHP.
+
+The complete list is in [Differences from the PHP package](https://github.com/DiVotek/tbtop/blob/main/packages/node/docs/differences.md).
