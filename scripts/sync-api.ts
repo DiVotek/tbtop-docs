@@ -31,6 +31,7 @@ const PAGES: Record<string, string> = {
 	actions: "Actions",
 	notifications: "Notifications",
 	panel: "Panel",
+	testing: "Testing",
 };
 
 const RAW_BASE = `https://raw.githubusercontent.com/${REPO}/${PINNED_TAG}/${SOURCE_DIR}`;
