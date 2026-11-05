@@ -1,0 +1,50 @@
+---
+title: "Upgrade to 0.8"
+description: "What to change in a host when moving from tbtop/admin 0.7 to 0.8.1: Laravel 12 or newer, sanitized displayHtml, unique page slugs, boolean meta.disabled, and the shorter MCP search."
+---
+
+0.8.1 is the first release of the 0.8 line; 0.8.0 was never published. It carries five breaking changes. Each one below says what changed and what to do. The repository keeps the same steps in [UPGRADE.md](https://github.com/DiVotek/tbtop/blob/main/UPGRADE.md).
+
+Bump all packages in one change:
+
+```bash
+composer require tbtop/admin:__PINNED_VERSION__
+npm install --save-exact @tbtop/inertia-admin@__PINNED_VERSION__
+```
+
+## Laravel 11 is no longer supported
+
+`tbtop/admin` now requires `illuminate/contracts ^12.0 || ^13.0`. Upgrade the host to Laravel 12 or 13 first: Composer refuses the update on Laravel 11. PHP stays at `^8.4`.
+
+## `displayHtml()` is sanitized by default
+
+`$s->displayHtml($html)` now runs the HTML through `symfony/html-sanitizer` on the server. It drops `<script>`, `<iframe>`, `<style>`, inline SVG, `on*` handlers, `class`, `style` and `data-*` attributes, `javascript:` URLs and `data:` images, and cuts input over 1 MB. Ordinary text markup, tables, images and links stay.
+
+If a page renders markup the author owns that relies on a dropped part, such as inline SVG icons or `class` styling, opt out on that block:
+
+```php
+$s->displayHtml($html)->trusted();
+```
+
+Never call `trusted()` on record data. `markdown()` is unchanged.
+
+## Duplicate page slugs fail at boot on every panel
+
+A panel with an explicit `pages()` list now rejects duplicate slugs and paths, as discovering panels already did. Two pages with the same class basename, say `ReceiptPage` from two packages, used to share route names. Override `slug()` on one of them:
+
+```php
+public static function slug(): string
+{
+    return 'inventory-'.parent::slug();
+}
+```
+
+The slug is part of the page's route names and endpoint URLs, so update any hard-coded `route('tbtop.{panel}.{slug}')` call for the renamed page.
+
+## `meta.disabled` is always a boolean
+
+`disabled()` now exists on every builder that carries meta and also takes a closure. The value on the wire is cast to a boolean, so `meta('disabled', 0)` serializes as `false` and `meta('disabled', 'yes')` as `true`. Only a [client block](/docs/extending/client-components) that read a non-boolean `meta.disabled` is affected.
+
+## MCP `search` returns a short index
+
+A bare `search` call now returns an index: pages, executable ids with kind and label, and table names. `search` with a page describes its forms, but sends their current `values` only with `values: true`. An MCP client that read form values from the bare `search` must call `search({ page, values: true })` instead. Nothing changes in the host's PHP code. See [MCP](/docs/integrations/mcp#pages-and-executables).
