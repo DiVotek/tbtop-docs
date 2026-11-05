@@ -8,7 +8,7 @@ assets — a React Router SPA with `ssr:false`, fully prerendered at build time.
 
 `PINNED_TAG` in `app/lib/shared.ts` is the only place the described release
 is pinned. To bump it: update `PINNED_TAG`, run `npm run sync:api`, review
-the diff in `content/docs/api/`, commit both together.
+the diff in `content/docs/(admin)/api/`, commit both together.
 
 Install commands write the version as `__PINNED_VERSION__`; the remark plugin
 in `app/lib/remark-pinned-version.ts` fills it from `PINNED_TAG` at build.

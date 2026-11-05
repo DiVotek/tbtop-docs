@@ -15,7 +15,7 @@ It ships for two stacks, with the same concepts and one version number:
 | --- | --- | --- |
 | Package | `tbtop/cms` (Composer) | `@tbtop/cms` (npm) |
 | Status | Stable 0.x | Alpha: the API may still break between minor versions |
-| Runs on | Laravel 11–13, PHP 8.4 | Node 22+ or Bun, and Cloudflare Workers |
+| Runs on | Laravel 12 or 13, PHP 8.4 | Node 22+ or Bun, and Cloudflare Workers |
 | Database | Your Laravel connection | Your Kysely instance (SQLite, D1, Postgres, MySQL) |
 | Frontend | Inertia and React in the same app | Headless: your framework renders the page props |
 
@@ -47,7 +47,7 @@ tables, and the Node package does not share or migrate a Laravel database.
 Both packages release together: one version, one tag and one
 [changelog](https://github.com/DiVotek/tbtop-cms/blob/main/CHANGELOG.md). That
 number is independent of tbtop/admin's; each release states the admin version it
-needs. While the version is 0.x, a minor release may contain breaking changes.
+needs (0.10.0 needs tbtop/admin 0.8.1 or later). While the version is 0.x, a minor release may contain breaking changes.
 
 ## Building with an AI agent
 
