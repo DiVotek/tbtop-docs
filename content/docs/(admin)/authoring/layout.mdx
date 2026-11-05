@@ -5,7 +5,7 @@ description: "The S builder's structural blocks (stack, row, flex, grid, section
 
 A page's `view()` returns one node tree. Structural blocks arrange other nodes; content blocks show something read-only. Forms, tables, stats, charts and lists are nodes like any other, so they go anywhere in the tree: two tables side by side, a form inside a tab next to a chart, a table inside a card section. There is no fixed page type and no limit on how many of each a page holds; the one rule is that each form, table, action, stat and chart name is unique per page ([Pages](/docs/authoring/pages#how-a-page-runs)).
 
-This page covers every structural and content block `S` has at v0.7.3. Exhaustive signatures are in the [S builder reference](/docs/api/builder) and the [blocks reference](/docs/api/blocks).
+This page covers every structural and content block `S` has at v0.8.1. Exhaustive signatures are in the [S builder reference](/docs/api/builder) and the [blocks reference](/docs/api/blocks).
 
 ## Options are validated
 
@@ -188,7 +188,7 @@ Inside a form, fields in a closed tab still submit. After a failed submit each t
 | `displayKeyValue($map)` | Labelled pairs as a definition list | — |
 | `displayImage($url)` | Image, or a download link | `->alt()`, `->caption()`, `->asLink()`, `->circular()`, `->square()` |
 | `displayRichtext($state)` | A stored rich-text (Lexical) document, read-only | — |
-| `displayHtml($html)` | Raw HTML, unsanitized | — |
+| `displayHtml($html)` | HTML, sanitized on the server | `->trusted()` |
 | `markdown($text)` | Markdown converted to HTML on the server | `->allowHtml()` |
 | `displayDivider()` | Horizontal rule | — |
 
@@ -207,7 +207,7 @@ $s->stack([
 ```
 
 - **`displayValue` formats like a table column.** `money()` takes minor units and divides by 100. `money`, `date`, `datetime` and `number` are formatted on the server; `badge`, `boolean` and `icon` ship the raw value and the client renders it. It has no label; pair it with a `displayText` or use `displayKeyValue`.
-- **`displayHtml` is not escaped.** Anything user-supplied in it is an XSS hole. Escape it yourself or use `markdown()`.
+- **`displayHtml` is sanitized by default.** The server runs the HTML through `symfony/html-sanitizer` with the W3C safe baseline. It keeps ordinary text markup, tables, images from http(s) or relative URLs, and links with http(s), `mailto:`, `tel:` or relative URLs (with `target` and `rel`). It drops `<script>`, `<iframe>`, `<style>`, inline SVG, `on*` handlers, `class`, `style` and `data-*` attributes, `javascript:` URLs and `data:` images. Input over 1 MB is cut before sanitizing. For markup the author owns that needs the dropped parts, such as inline SVG icons or `class` styling, call `->trusted()` to pass it through unchanged. Never call it on record data.
 - **`markdown()` strips embedded HTML** and unsafe links by default. `->allowHtml()` passes HTML through; use it only for text you control.
 - **Content blocks take `->when()`**, which drops the block from the response when false.
 
@@ -230,6 +230,19 @@ Builders serialize themselves, so a `table`, `stat` or `chart` goes straight int
 `actionsRow($actions)` renders standalone buttons in a row, outside any form or table. `['variant' => 'grid']` lays them out as a grid of bordered tiles (two columns, three from `sm`, four from `lg`), which suits a page of quick links.
 
 Stats have no card wrapper to configure: a stat is already a card. A row of stats is a `grid` of stats. `url()` makes the whole card a link, so a KPI can open the list behind it; add `openUrlInNewTab()` for a new tab.
+
+`params()` puts filter fields in the card, the same field builders a chart's `params()` takes. Each change refetches the stat, and the `value` closure receives the current values as `array $params`, their defaults at first render:
+
+```php
+$s->stat('Signups')
+    ->params([$s->select('period')->options([
+        ['value' => '7', 'label' => '7 days'],
+        ['value' => '30', 'label' => '30 days'],
+    ])->default('7')->rules('in:7,30')])
+    ->value(fn (array $params) => User::where('created_at', '>=', now()->subDays((int) $params['period']))->count()),
+```
+
+Param values come from the query string, so give each field `rules()`: a value that fails them is answered 422 before the closure runs. Only `value` is re-resolved; `description`, `delta` and `sparkline` stay as declared. `url()` and `params()` do not combine, because a control cannot sit inside a link, and `poll()` and `params()` need `$s->stat()`: a bare `Stat::make()` is not registered with the data endpoint.
 
 A `list` row is an array with `title` (required), `meta`, `color` (`success`, `warning`, `danger` or `muted`), `url` and `openUrlInNewTab`, or the same row built with `$s->listItem()`. The two forms mix freely:
 

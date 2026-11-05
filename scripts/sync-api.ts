@@ -32,6 +32,7 @@ const PAGES: Record<string, string> = {
 	actions: "Actions",
 	notifications: "Notifications",
 	panel: "Panel",
+	testing: "Testing",
 };
 
 const RAW_BASE = `https://raw.githubusercontent.com/${REPO}/${PINNED_TAG}/${SOURCE_DIR}`;
@@ -134,10 +135,11 @@ async function main() {
 		console.log(`wrote content/docs/(admin)/api/${name}.mdx`);
 	}
 
+	// One page per line, as biome formats a list too long for one line.
 	const pages = Object.keys(PAGES)
-		.map((name) => `"${name}"`)
-		.join(", ");
-	const metaJson = `{\n\t"title": "API Reference",\n\t"pages": [${pages}]\n}\n`;
+		.map((name) => `\t\t"${name}"`)
+		.join(",\n");
+	const metaJson = `{\n\t"title": "API Reference",\n\t"pages": [\n${pages}\n\t]\n}\n`;
 	await writeFile(path.join(OUTPUT_DIR, "meta.json"), metaJson, "utf8");
 	console.log("wrote content/docs/(admin)/api/meta.json");
 }

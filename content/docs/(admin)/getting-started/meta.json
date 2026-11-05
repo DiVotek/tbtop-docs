@@ -8,6 +8,7 @@
 		"first-page",
 		"resource-generator",
 		"deploy",
-		"versioning"
+		"versioning",
+		"upgrade-0-8"
 	]
 }
