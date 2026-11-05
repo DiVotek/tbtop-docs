@@ -3,11 +3,59 @@ title: "Laravel"
 description: "Install tbtop/cms into a Laravel app, wire the host and create the first admin."
 ---
 
-This page is being written for the 0.10.0 release. It will cover:
+`tbtop/cms` brings the content: tables, admin pages and frontend routes. The admin
+panel itself comes from its dependency [tbtop/admin](/docs/getting-started/install),
+which has its own installer.
 
-- Requirements and `composer require tbtop/cms`
-- `admin:install` and `cms:install`, then the host wiring they print
-- Frontend routes, the two Vite entries and the host-owned page component
-- SSR and the `<head>` include
-- The first admin and `cms:doctor`
-- Deploying to production
+Requirements: PHP 8.4 and Laravel 11, 12 or 13.
+
+## Install
+
+Run both installers, in this order:
+
+```bash
+composer require tbtop/cms
+php artisan vendor:publish --tag="tbtop-cms-config"
+php artisan admin:install
+php artisan cms:install
+npm install @tbtop/inertia-admin @json-render/core @json-render/react
+```
+
+## Wire the host
+
+The installers print these steps but cannot do them: each one edits a file of your
+app.
+
+1. Add `resources/js/admin.tsx` to the Vite `input` list.
+2. Register the frontend routes **last** in `routes/web.php`, because they end in a
+   catch-all:
+
+   ```php
+   Cms::frontendRoutes();
+   ```
+
+3. Create `resources/js/pages/Cms/Page.tsx`. Re-export `@cms/CmsPage` to start; copy
+   it into your app once you need site chrome around the page.
+4. Add the `@cms` alias to `vite.config.ts` and `tsconfig.json`.
+5. Import `@cms/admin/blocks` in `admin.tsx`, and add the two `@source` lines to
+   `resources/css/admin.css`.
+6. Add `@include('tbtop-cms::head')` above the Inertia head in the root view, so
+   the SEO tags render on the server.
+7. Delete `public/robots.txt`: the CMS serves robots from its settings.
+
+## Create the first admin
+
+```bash
+php artisan cms:admin:create you@example.com
+php artisan cms:doctor
+```
+
+The first admin becomes the owner. `cms:doctor` checks the wiring above; run it
+again after any change to routes, Vite entries or the root view.
+
+## Next
+
+The package's own guide covers blocks, page types, seeding content, SEO, forms
+and every config key, command and route:
+[`docs/host/ai`](https://github.com/DiVotek/tbtop-cms/tree/main/docs/host/ai).
+Guides on this site follow.

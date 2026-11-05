@@ -2,14 +2,5 @@
 	"title": "CMS",
 	"description": "tbtop/cms, the site CMS for Laravel and Node",
 	"root": true,
-	"pages": [
-		"index",
-		"getting-started",
-		"concepts",
-		"guides",
-		"recipes",
-		"ai-agents",
-		"reference",
-		"upgrading"
-	]
+	"pages": ["index", "getting-started"]
 }
