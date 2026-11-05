@@ -58,6 +58,10 @@ Every Node-only page carries `<NodeAlpha />` while the Node package is in alpha;
 feature only one stack has gets `<StackOnly stack="…" />`. Reference pages
 are synced from the packages, descriptive pages are written here.
 
+Both CMS packages and the tbtop-cms repo are public, so their host-facing
+API (install, config, commands, bindings, extension points) belongs here.
+Package internals that a host never touches do not.
+
 ## Anonymise production examples
 
 An example drawn from a private production project is rewritten generic
