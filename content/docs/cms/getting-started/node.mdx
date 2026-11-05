@@ -1,0 +1,109 @@
+---
+title: "Node"
+description: "Define a site with @tbtop/cms and serve it on Node, Bun or Cloudflare Workers."
+---
+
+<NodeAlpha />
+
+`@tbtop/cms` is the CMS core for Node, Bun and Cloudflare Workers: pages, blocks and
+SEO over your Kysely database, edited in the Node build of `@tbtop/admin`. It is
+meant for new projects: it owns its `tbtop_*` tables and does not share a database
+with the Laravel package.
+
+The frontend is headless. Your framework (TanStack Start, Hono with React, Astro…)
+asks the CMS for a page's props and renders them; `@tbtop/cms/react` has the React
+half.
+
+## Install
+
+```bash
+npm install @tbtop/cms @tbtop/admin kysely
+```
+
+Node 22+ or Bun. React, `better-auth`, `@tbtop/inertia-admin` and `@json-render/*`
+are optional peers, needed only for the parts that use them.
+
+## Define the site
+
+A site is a set of records made of fields. One description gives the admin form,
+the zod schema and the TypeScript type, so the three cannot drift.
+
+```ts title="site.ts"
+// Client-safe: the browser imports `site.catalog` from this file.
+import { block, defineSite, f, hero, pageType } from "@tbtop/cms/site";
+
+export const site = defineSite({
+	blocks: {
+		Hero: hero,
+		Quote: block({ text: f.textarea().translatable(), by: f.text() }, { label: "Quote" }),
+	},
+	pages: {
+		page: { tagline: f.text() }, // extends the built-in `page` type
+		post: pageType({ author: f.text(), readingTime: f.number() }, { label: "Post", jsonLd: "BlogPosting" }),
+	},
+	settings: { Company: { phone: f.text() } }, // tabs of the Site settings page
+});
+```
+
+Fields are `f.text`, `textarea`, `richtext`, `number`, `boolean`, `date`, `select`,
+`tags`, `image`, `link`, `pages`, `collection` and `repeater`. Each takes `.label()`,
+`.helperText()`, `.translatable()` and `.required()`.
+
+## Serve it
+
+<Tabs items={["Node or Bun", "Cloudflare Workers"]}>
+  <Tab value="Node or Bun">
+
+```ts title="server.ts"
+import { serve } from "@tbtop/cms/serve";
+import { site } from "./site";
+
+export default serve(site, { db, render, renderError });
+```
+
+`serve` wires sign-in (Better Auth over your `db`), the admin panel, robots,
+sitemaps and form posts, then hands every page to your `render`. On the first
+request it migrates the database, creates the error pages and the first admin.
+
+  </Tab>
+  <Tab value="Cloudflare Workers">
+
+```ts title="worker.ts"
+import { cloudflare } from "@tbtop/cms/cloudflare";
+import { site } from "./site";
+
+export default cloudflare(site, { render, renderError });
+```
+
+Bindings by name: `DB` (D1), `CACHE` (KV, optional) and `MEDIA` (R2, optional). Set
+`compatibility_flags = ["nodejs_compat"]` and add a `* * * * *` cron trigger. A
+Worker never migrates itself: generate the SQL with `tbtop-cms d1:migrations` and
+apply it with `wrangler d1 migrations apply` on deploy.
+
+  </Tab>
+</Tabs>
+
+## The first admin
+
+Set these before the first start (on Workers, as `wrangler secret put` secrets):
+
+| Variable | Purpose |
+| --- | --- |
+| `BETTER_AUTH_SECRET` | Required; the app refuses to start without it |
+| `TBTOP_ADMIN_EMAIL`, `TBTOP_ADMIN_PASSWORD` | The first admin, created only while the site has no admin |
+
+The admin opens at `/admin`. Once it exists, rotate the password on the Users page;
+changing the variables no longer changes anything.
+
+## Deploy on a VPS
+
+Run `tbtop-cms migrate` on each release and `tbtop-cms scheduled` from cron every
+minute. Both read the default export of `cms.config.ts` (or `--config`). Without
+the scheduled task, form submissions stay pending and nobody is notified.
+
+## Next
+
+The package README covers page types, collections, link fields, the React
+renderer, forms, caching and what the alpha does not have yet:
+[`packages/node`](https://github.com/DiVotek/tbtop-cms/tree/main/packages/node).
+Guides on this site follow.

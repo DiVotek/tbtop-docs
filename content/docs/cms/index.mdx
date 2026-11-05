@@ -1,0 +1,59 @@
+---
+title: "Overview"
+description: "tbtop/cms is a code-first site CMS that lives inside your app: pages, blocks and SEO declared in code, edited in tbtop/admin."
+---
+
+`tbtop/cms` adds the content of a website to an app you run: pages and their
+hierarchy, blocks, the header and footer layout, redirects, languages, site
+settings, SEO, and forms with notifications. Page types and blocks are declared in
+code; editors work in an admin panel built on [tbtop/admin](/docs). This site's
+sibling, [tbtop.dev](https://tbtop.dev), runs on it.
+
+It ships for two stacks, with the same concepts and one version number:
+
+| | Laravel | Node |
+| --- | --- | --- |
+| Package | `tbtop/cms` (Composer) | `@tbtop/cms` (npm) |
+| Status | Stable 0.x | Alpha: the API may still break between minor versions |
+| Runs on | Laravel 12 or 13, PHP 8.4 | Node 22+ or Bun, and Cloudflare Workers |
+| Database | Your Laravel connection | Your Kysely instance (SQLite, D1, Postgres, MySQL) |
+| Frontend | Inertia and React in the same app | Headless: your framework renders the page props |
+
+The two packages are separate products for separate projects: each owns its own
+tables, and the Node package does not share or migrate a Laravel database.
+
+<Cards>
+  <Card title="Start with Laravel" href="/docs/cms/getting-started/laravel" description="Install tbtop/cms into a Laravel app and wire the host." />
+  <Card title="Start with Node" href="/docs/cms/getting-started/node" description="Define a site with @tbtop/cms and serve it on Node, Bun or Workers." />
+  <Card title="GitHub" href="https://github.com/DiVotek/tbtop-cms" description="Source, changelog and issues for both packages." />
+</Cards>
+
+## What ships in the core
+
+- **Pages**: page types with rules for which pages they hold, slugs and URLs,
+  automatic redirects when a URL changes, scheduled publishing, signed preview
+  links and revisions.
+- **Blocks**: typed content units with an editor form, props for your component and
+  a client schema that checks them, plus header and footer layout slots.
+- **SEO**: meta tags per page and locale, JSON-LD, sitemap, robots, a 404 log with
+  redirects, and `llms.txt` for AI agents.
+- **Forms**: form blocks whose submissions land in an admin inbox and notify by
+  mail, Telegram or the admin bell.
+- **Collections**: content that is not a page, such as reviews or team members,
+  edited in the admin and used on pages.
+
+## Versions
+
+Both packages release together: one version, one tag and one
+[changelog](https://github.com/DiVotek/tbtop-cms/blob/main/CHANGELOG.md). That
+number is independent of tbtop/admin's; each release states the admin version it
+needs (0.10.0 needs tbtop/admin 0.8.1 or later). While the version is 0.x, a minor release may contain breaking changes.
+
+## Building with an AI agent
+
+The Laravel package ships a guide written for coding agents, checked against its
+source. Add this line to your app's `AGENTS.md` or `CLAUDE.md`:
+
+```text
+Building on tbtop/cms → read vendor/tbtop/cms/docs/host/ai/README.md first.
+```

@@ -1,0 +1,15 @@
+{
+	"title": "Admin",
+	"description": "tbtop/admin, the admin panel builder",
+	"root": true,
+	"pages": [
+		"index",
+		"getting-started",
+		"authoring",
+		"recipes",
+		"extending",
+		"integrations",
+		"packages",
+		"api"
+	]
+}

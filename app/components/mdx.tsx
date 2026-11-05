@@ -1,9 +1,17 @@
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
+import { NodeAlpha, StackOnly, StackTab, StackTabs } from "@/components/cms";
 
 export function getMDXComponents(components?: MDXComponents) {
 	return {
 		...defaultMdxComponents,
+		Tabs,
+		Tab,
+		StackTabs,
+		StackTab,
+		NodeAlpha,
+		StackOnly,
 		...components,
 	} satisfies MDXComponents;
 }

@@ -2,7 +2,7 @@
 /**
  * Fetches the 7 generated API reference files from DiVotek/tbtop at the
  * pinned tag and turns each into a Fumadocs MDX page under
- * content/docs/api/.
+ * content/docs/(admin)/api/.
  *
  * Run via `npm run sync:api`. Never hand-edit the output — rerun this
  * script instead, after bumping PINNED_TAG in app/lib/shared.ts.
@@ -19,6 +19,7 @@ const OUTPUT_DIR = path.join(
 	"..",
 	"content",
 	"docs",
+	"(admin)",
 	"api",
 );
 
@@ -131,7 +132,7 @@ async function main() {
 		const raw = await res.text();
 		const mdx = toMdx(name, title, raw);
 		await writeFile(path.join(OUTPUT_DIR, `${name}.mdx`), mdx, "utf8");
-		console.log(`wrote content/docs/api/${name}.mdx`);
+		console.log(`wrote content/docs/(admin)/api/${name}.mdx`);
 	}
 
 	// One page per line, as biome formats a list too long for one line.
@@ -140,7 +141,7 @@ async function main() {
 		.join(",\n");
 	const metaJson = `{\n\t"title": "API Reference",\n\t"pages": [\n${pages}\n\t]\n}\n`;
 	await writeFile(path.join(OUTPUT_DIR, "meta.json"), metaJson, "utf8");
-	console.log("wrote content/docs/api/meta.json");
+	console.log("wrote content/docs/(admin)/api/meta.json");
 }
 
 main().catch((error) => {
