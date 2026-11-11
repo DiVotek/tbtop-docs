@@ -374,6 +374,7 @@ The selection holds the checked rows; it is cleared whenever the rows change —
 ])
 ```
 
+- Existing bulk actions, delete included, now reach every matching row after "Select all". If a destructive handler should stay limited to the page, check `$ctx->allMatching` and refuse or narrow it there.
 - `records()` works only for an action in the table's `bulkActions()`, including groups, dropdowns and a bulk modal's submit. Anywhere else it throws.
 - If a handler needs both the keys and a write through `records()`, read `$ctx->selection` first. The keys are read lazily with the table's filters, so after the write moves rows out of the tab or filter, a later read misses them.
 - The offer needs a row total, so a `simplePagination()` or `embedded()` table never shows it.
