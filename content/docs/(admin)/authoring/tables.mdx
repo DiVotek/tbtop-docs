@@ -434,7 +434,7 @@ use Tbtop\Admin\Dsl\Summary;
 - `using($fn, $label)` gets a clone of the filtered query and is shown exactly as it returns.
 - On a `groups()` table, each group also gets a subtotal row over the whole group, which stays visible when the group is collapsed.
 - A built-in summary throws on a relation path, where you use `using()` instead, and on a `group()` column. Totals are not part of an export.
-- Node: the same names, `Column.make("total").summarize(Summary.sum())`; your `QueryDriver` needs `aggregate()`, which the Kysely and in-memory drivers have.
+- Node: the same names, `Column.make("total").summarize(Summary.sum())`. Summaries go through the optional `QueryDriver.aggregate()`, which the Kysely and in-memory drivers implement.
 
 The full list is under [`Summary`](/docs/api/tables#summary) in the API reference.
 
