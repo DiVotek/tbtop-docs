@@ -1,6 +1,6 @@
 ---
 title: "Tables"
-description: "Build a server-driven table: columns, sorting, search, filters, tabs, pagination, polling, row and bulk actions, CSV and XLSX export, and drag reordering."
+description: "Build a server-driven table: columns, sorting, search, filters, tabs, pagination, polling, row and bulk actions, column summaries, CSV and XLSX export, and drag reordering."
 ---
 
 A table is a block you add to a page with `$s->table('name')`. It needs two things: `columns()` to say what each row shows, and `query()` to say where the rows come from. Everything else — sorting, search, filters, tabs, actions — is opt-in.
@@ -412,6 +412,31 @@ $s->table('orders')
 - **Floor of 5 seconds.** A shorter interval throws.
 
 For a change the page itself makes, the `refreshTable` effect is still the tool; `poll()` covers changes made elsewhere.
+
+## Summaries
+
+`summarize()` adds a totals row under the table. Each `Summary` is an aggregate over every row the filtered query matches, with the current tab, search and filters applied, not just the page:
+
+```php
+use Tbtop\Admin\Dsl\Summary;
+
+->columns([
+    Column::make('total')->money('USD')
+        ->summarize(Summary::sum(), Summary::avg('Average order')),
+    Column::make('number')->summarize(Summary::count()),
+    Column::make('margin')->summarize(
+        Summary::using(fn ($query) => $query->sum('total') - $query->sum('cost'), 'Margin'),
+    ),
+])
+```
+
+- `sum()`, `avg()`, `min()`, `max()` and `count()` each take an optional label. Their values are formatted like the column's cells (money, number, date). `count()` is an integer, and `avg()` is rounded to 2 decimals unless `money()` or `number($decimals)` formats it.
+- `using($fn, $label)` gets a clone of the filtered query and is shown exactly as it returns.
+- On a `groups()` table, each group also gets a subtotal row over the whole group, which stays visible when the group is collapsed.
+- A built-in summary throws on a relation path, where you use `using()` instead, and on a `group()` column. Totals are not part of an export.
+- Node: the same names, `Column.make("total").summarize(Summary.sum())`; your `QueryDriver` needs `aggregate()`, which the Kysely and in-memory drivers have.
+
+The full list is under [`Summary`](/docs/api/tables#summary) in the API reference.
 
 ## Export
 
