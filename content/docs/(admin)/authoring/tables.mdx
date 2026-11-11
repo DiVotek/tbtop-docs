@@ -359,7 +359,25 @@ use Tbtop\Admin\Dsl\Actions\DeleteAction;
 ])
 ```
 
-The selection holds the checked rows on the current page only; it is cleared whenever the rows change — a new page, a filter, a refresh. Handlers, confirmation, modals and effects are covered on [Actions](/docs/authoring/actions).
+The selection holds the checked rows; it is cleared whenever the rows change — a new page, a filter, a refresh.
+
+**All matching rows.** Once every row on the page is checked and the table has more, the bulk bar offers "Select all 1240". Picked, the next bulk action runs on every row that the table's tab, search, column search and filters match, not just the page. There is nothing to opt into: `$ctx->selection` then holds every matching key, so a `whereKey($ctx->selection)` handler like the one above keeps working, and `$ctx->allMatching` tells the two cases apart. For a large table, use `$ctx->records()`, the table's own query narrowed to the selection, so the work runs as one statement instead of a key list:
+
+```php
+->bulkActions([
+    $s->action('archive')->label('Archive')
+        ->handle(function (ActionCtx $ctx): Effects {
+            $count = $ctx->records()->update(['archived_at' => now()]);
+
+            return Effects::make()->notify("Archived {$count} order(s)")->refreshTable('orders');
+        }, needs: ['selection']),
+])
+```
+
+- `records()` works only for an action in the table's `bulkActions()`, including groups, dropdowns and a bulk modal's submit. Anywhere else it throws.
+- If a handler needs both the keys and a write through `records()`, read `$ctx->selection` first. The keys are read lazily with the table's filters, so after the write moves rows out of the tab or filter, a later read misses them.
+- The offer needs a row total, so a `simplePagination()` or `embedded()` table never shows it.
+- Node: `ctx.records()` returns your driver's query and `ctx.allMatching` the flag. Handlers, confirmation, modals and effects are covered on [Actions](/docs/authoring/actions).
 
 **Inline editing.** `toggle()`, `textInput()`, `numberInput()` and `selectColumn()` make a cell editable. Each needs an `onSave` closure, which receives the model and the new value:
 
