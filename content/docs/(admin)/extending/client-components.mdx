@@ -305,11 +305,13 @@ defineCustomAction("download", (_ctx, params) => {
 });
 ```
 
-`orders.export` is a named route in your app. For exporting a table's own rows, use the built-in [`ExportAction`](/docs/authoring/tables#export) instead. The params array is passed to the handler
+`orders.export` is a named route in your app. The params array is passed to the handler
 unchanged. The handler receives the action context (`client`, `notify`, `navigate`, route `params`,
 and `form`, `table` or `row` when the action has one) and the `params` array. If no handler is registered under the name, nothing fails at page load: the
 action throws when it is clicked. See [`custom()`](/docs/api/actions#actionbuilder) in the
 API reference and [Actions](/docs/authoring/actions) for the other action types.
+
+To export a table's own rows, use the built-in [`ExportAction`](/docs/authoring/tables#export) instead of a custom handler.
 
 ## Icons
 
