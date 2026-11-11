@@ -423,7 +423,7 @@ $s->table('orders')
 - **Columns.** `export(label: ...)` renames the header in the file. `export(enabled: false)` leaves the column unticked in the dialog, and the user can still tick it. A column without `export()` is ticked when it is visible.
 - **Size.** The file streams straight from the query, with no queue. `maxRows` (50 000 by default) caps an export: a larger one is refused with a message to narrow it down. Raise it with `ExportAction::make($s, maxRows: 200_000)`.
 - **Permission.** Who may export is the action's `authorize()`. The endpoint answers 404 to anyone else, and to an export action asked for another table's rows.
-- **CSV** is UTF-8 with a BOM, so Excel opens it with the right encoding. A text cell that starts with `=`, `+`, `-` or `@` gets a leading `'`, so a spreadsheet does not run it as a formula.
+- **CSV** is UTF-8 with a BOM, so Excel opens it with the right encoding. A text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet does not run it as a formula.
 
 An export is a custom action on the wire, so the [MCP server](/docs/integrations/mcp) lists it as excluded. `ExportAction::make()` returns an `ActionBuilder` like the other [action presets](/docs/authoring/actions); `export()` is listed with the other [`Column`](/docs/api/tables#column) methods. Import is not available yet.
 
