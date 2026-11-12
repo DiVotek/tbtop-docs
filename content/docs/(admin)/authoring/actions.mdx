@@ -298,6 +298,8 @@ Other presets cover one-click row operations and form buttons:
   `SoftDeletes` model class and do the work themselves; `softDeletes()` on a table wires all four.
 - `FormActions::save($s)` and `FormActions::saveCancel($s, $cancelUrl)` build the
   Save/Cancel row of a full-page form.
+- `ExportAction::make($s)` in a table's header or bulk actions downloads its rows as CSV or
+  XLSX; see [Export](/docs/authoring/tables#export).
 
 A preset closure can return nothing, and the preset then sends its default effects: a
 toast, closing the modal where there is one, and refreshing the table. Return an

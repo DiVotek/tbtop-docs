@@ -1,6 +1,6 @@
 ---
 title: "Tables"
-description: "Build a server-driven table: columns, sorting, search, filters, tabs, pagination, polling, and row and bulk actions."
+description: "Build a server-driven table: columns, sorting, search, filters, tabs, pagination, polling, row and bulk actions, column summaries, CSV and XLSX export, and drag reordering."
 ---
 
 A table is a block you add to a page with `$s->table('name')`. It needs two things: `columns()` to say what each row shows, and `query()` to say where the rows come from. Everything else — sorting, search, filters, tabs, actions — is opt-in.
@@ -359,7 +359,26 @@ use Tbtop\Admin\Dsl\Actions\DeleteAction;
 ])
 ```
 
-The selection holds the checked rows on the current page only; it is cleared whenever the rows change — a new page, a filter, a refresh. Handlers, confirmation, modals and effects are covered on [Actions](/docs/authoring/actions).
+The selection holds the checked rows; it is cleared whenever the rows change — a new page, a filter, a refresh.
+
+**All matching rows.** Once every row on the page is checked and the table has more, the bulk bar offers "Select all 1240". Picked, the next bulk action runs on every row that the table's tab, search, column search and filters match, not just the page. There is nothing to opt into: `$ctx->selection` then holds every matching key, so a `whereKey($ctx->selection)` handler like the one above keeps working, and `$ctx->allMatching` tells the two cases apart. For a large table, use `$ctx->records()`, the table's own query narrowed to the selection, so the work runs as one statement instead of a key list:
+
+```php
+->bulkActions([
+    $s->action('archive')->label('Archive')
+        ->handle(function (ActionCtx $ctx): Effects {
+            $count = $ctx->records()->update(['archived_at' => now()]);
+
+            return Effects::make()->notify("Archived {$count} order(s)")->refreshTable('orders');
+        }, needs: ['selection']),
+])
+```
+
+- Existing bulk actions, delete included, now reach every matching row after "Select all". If a destructive handler should stay limited to the page, check `$ctx->allMatching` and refuse or narrow it there.
+- `records()` works only for an action in the table's `bulkActions()`, including groups, dropdowns and a bulk modal's submit. Anywhere else it throws.
+- If a handler needs both the keys and a write through `records()`, read `$ctx->selection` first. The keys are read lazily with the table's filters, so after the write moves rows out of the tab or filter, a later read misses them.
+- The offer needs a row total, so a `simplePagination()` or `embedded()` table never shows it.
+- Node: `ctx.records()` returns your driver's query and `ctx.allMatching` the flag. Handlers, confirmation, modals and effects are covered on [Actions](/docs/authoring/actions).
 
 **Inline editing.** `toggle()`, `textInput()`, `numberInput()` and `selectColumn()` make a cell editable. Each needs an `onSave` closure, which receives the model and the new value:
 
@@ -395,9 +414,86 @@ $s->table('orders')
 
 For a change the page itself makes, the `refreshTable` effect is still the tool; `poll()` covers changes made elsewhere.
 
+## Summaries
+
+`summarize()` adds a totals row under the table. Each `Summary` is an aggregate over every row the filtered query matches, with the current tab, search and filters applied, not just the page:
+
+```php
+use Tbtop\Admin\Dsl\Summary;
+
+->columns([
+    Column::make('total')->money('USD')
+        ->summarize(Summary::sum(), Summary::avg('Average order')),
+    Column::make('number')->summarize(Summary::count()),
+    Column::make('margin')->summarize(
+        Summary::using(fn ($query) => $query->sum('total') - $query->sum('cost'), 'Margin'),
+    ),
+])
+```
+
+- `sum()`, `avg()`, `min()`, `max()` and `count()` each take an optional label. Their values are formatted like the column's cells (money, number, date). `count()` is an integer, and `avg()` is rounded to 2 decimals unless `money()` or `number($decimals)` formats it.
+- `using($fn, $label)` gets a clone of the filtered query and is shown exactly as it returns.
+- On a `groups()` table, each group also gets a subtotal row over the whole group, which stays visible when the group is collapsed.
+- A built-in summary throws on a relation path, where you use `using()` instead, and on a `group()` column. Totals are not part of an export.
+- Node: the same names, `Column.make("total").summarize(Summary.sum())`. Summaries go through the optional `QueryDriver.aggregate()`, which the Kysely and in-memory drivers implement.
+
+The full list is under [`Summary`](/docs/api/tables#summary) in the API reference.
+
+## Export
+
+`ExportAction` downloads a table's rows as CSV or XLSX. Put it in `headerActions()` to export the whole table, or in `bulkActions()` to export the checked rows, with a switch for "all matching rows". A click opens a dialog where the user ticks columns and picks a format; the download then carries the table's current tab, search, column search, filters and sort. The last pick is remembered per table.
+
+```php
+use Tbtop\Admin\Dsl\Actions\ExportAction;
+use Tbtop\Admin\Dsl\ExportFormat;
+
+$s->table('orders')
+    ->query(fn () => Order::query())
+    ->columns([
+        Column::make('number')->label('Order'),
+        Column::make('total')->money('USD')
+            ->export(as: fn ($cents) => $cents / 100),   // a number, not "12.50 USD"
+        Column::make('note')->export(label: 'Internal note', enabled: false),
+    ])
+    ->headerActions([
+        ExportAction::make($s)->authorize('export-orders'),
+    ])
+    ->bulkActions([
+        ExportAction::make($s, [ExportFormat::Csv], filename: 'orders', name: 'exportSelected'),
+    ])
+```
+
+- **Values are what the table shows**, in CSV and XLSX alike: formatted dates, numbers and money, badge and select labels, booleans as Yes/No. `export(as: fn ($value, $row) => ...)` replaces a column's value in the file; `$value` is the raw column value.
+- **Columns.** `export(label: ...)` renames the header in the file. `export(enabled: false)` leaves the column unticked in the dialog, and the user can still tick it. A column without `export()` is ticked when it is visible.
+- **Size.** The file streams straight from the query, with no queue. `maxRows` (50 000 by default) caps an export: a larger one is refused with a message to narrow it down. Raise it with `ExportAction::make($s, maxRows: 200_000)`.
+- **Permission.** Who may export is the action's `authorize()`. The endpoint answers 404 to anyone else, and to an export action asked for another table's rows.
+- **CSV** is UTF-8 with a BOM, so Excel opens it with the right encoding. A text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a spreadsheet does not run it as a formula.
+
+An export is a custom action on the wire, so the [MCP server](/docs/integrations/mcp) lists it as excluded. `ExportAction::make()` returns an `ActionBuilder` like the other [action presets](/docs/authoring/actions); `export()` is listed with the other [`Column`](/docs/api/tables#column) methods. Import is not available yet.
+
+## Reordering
+
+`reorderable('sort_order')` adds drag handles and makes that column the default sort. On drop, the package checks every id against the table's `query()` scope and writes each row's new position to the column in one transaction.
+
+That write is a query-builder `update()`, so Eloquent model events and observers do not fire, and a cache keyed on them goes stale. When your app should own the write, pass it as the second argument:
+
+```php
+use Illuminate\Database\Eloquent\Builder;
+use Tbtop\Admin\Actions\Effects;
+
+$s->table('pages')
+    ->query(fn () => Page::query())
+    ->reorderable('sort_order', function (array $ids, Builder $query) {
+        Pages::reorder($ids);   // your write: model events, cache flush, audit log
+
+        return Effects::make()->refreshTable('pages')->notify('Order saved');
+    })
+```
+
+The closure replaces the package's write and gets the ids in their new order plus a fresh scoped query. The ids are scope-checked before it runs, but no transaction is opened for it. It may return `Effects`; anything else falls back to refreshing the table.
+
 ## More table features
 
-- **Reordering.** `reorderable('sort_order')` adds drag handles and writes the new order to that column. It also becomes the default sort.
 - **Grouping.** `groups('status')` puts a header row above each run of rows sharing a value. It requires `defaultSort('status', ...)` first, groups only within the current page, and is off while reordering. `groups('status', collapsible: true)` turns each header into a toggle that hides or shows its group, and `collapsed: true` starts every group closed (it implies `collapsible`). The open or closed state survives a refetch, poll or page change, and resets on a browser reload.
 - **Soft deletes.** `softDeletes($s, Order::class)` adds Active / Trashed / All tabs and restore and force-delete row and bulk actions. Call it after your own `tabs()`, `rowActions()` and `bulkActions()`; it merges into them. The three tabs are prepended, so Active becomes the default tab instead of your first one. Pass `['tabs' => false]`, `['rowActions' => false]` or `['bulkActions' => false]` as the third argument to skip a part.
 - **Embedding.** `embedded()` drops the toolbar, filters and pagination footer, for a small table inside a card. `toolbar(false)`, `searchInput(false)` and `columnToggle(false)` hide less.

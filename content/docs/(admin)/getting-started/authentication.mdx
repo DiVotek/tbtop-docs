@@ -52,7 +52,7 @@ If your app signs users in through its own screens and you only want the profile
 Without `--auth` or `--profile`, `admin:install` publishes only the root view, the JS entry and the stylesheet, as before.
 
 <Callout type="info">
-  The scaffold always writes to `app/Admin/Pages/Auth`. Running `--auth` again for a second panel reports the files as existing and does nothing. For a second panel, write its subclasses by hand in another directory.
+  Each panel gets its own directory. The first panel uses `app/Admin/Pages/Auth`. For a second panel, `--auth --panel=<id>` writes to `Auth/` under that panel's first `discoverPages()` root, or else to `app/Admin/{Id}/Pages/Auth` (`ops-admin` becomes `OpsAdmin`) and prints a `discoverPages()` hint. If another panel still owns the target directory, the command refuses and writes nothing.
 </Callout>
 
 ## Send guests to the login page

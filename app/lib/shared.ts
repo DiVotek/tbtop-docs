@@ -18,7 +18,7 @@ export const gitConfig = {
  * The tbtop/admin release these docs describe. The only place this pins —
  * bump it here, then rerun `npm run sync:api` to refresh content/docs/(admin)/api.
  */
-export const PINNED_TAG = "v0.8.1";
+export const PINNED_TAG = "v0.8.2";
 
 /**
  * The tbtop/cms release content/docs/cms describes. Both CMS packages
