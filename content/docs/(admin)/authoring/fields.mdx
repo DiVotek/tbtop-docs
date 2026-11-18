@@ -186,6 +186,8 @@ $s->form('settings', [
 
 ## Rich text with embedded blocks
 
+**Links.** A URL or email typed or pasted into a richtext field becomes a link: `http(s)://` as typed, a bare `www.` address with `https://`, an email as `mailto:`. Text in a code block stays plain, and the toolbar's link dialog still sets any other link.
+
 `richtext()->embeds()` lets editors drop structured blocks between paragraphs: a callout, a quote with an author, a product card. Each block kind is an `Embed` with an ordinary field list. Editors insert one from the slash menu ("Blocks") or the toolbar's "Block" button, and edit its data in a modal form:
 
 ```php
