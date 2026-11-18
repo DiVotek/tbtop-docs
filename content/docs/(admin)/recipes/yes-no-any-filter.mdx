@@ -1,13 +1,11 @@
 ---
 title: "Yes / no / any filter"
-description: "Filter a table on a boolean with three states — yes, no, or don't filter — using the radio and select filters that already exist."
+description: "Filter a table on a boolean with three states — yes, no, or don't filter — with Radio::ternary(), or the radio and select filters for custom shapes."
 ---
 
-A boolean column often needs a three-state filter: show only the published posts, only the drafts, or all of them. There is no dedicated ternary filter kind. The `radio` and `select` filters cover it, because both map to `where(name, value)` and an empty value never reaches the query.
+A boolean column often needs a three-state filter: show only the published posts, only the drafts, or all of them. There is no dedicated ternary filter kind: `Radio::ternary()` fills a radio filter with "Any", "Yes" and "No", and the `radio` filter maps to `where(name, value)` while an empty value never reaches the query.
 
-## Radio with an "Any" option
-
-A radio whose first option has an empty value is the whole recipe:
+## Radio::ternary()
 
 ```php
 use Tbtop\Admin\Dsl\Fields\Radio;
@@ -16,14 +14,28 @@ $s->table('posts')
     ->query(fn () => Post::query())
     ->columns([/* ... */])
     ->filters([
-        Radio::make('is_published')->label('Published')->inline()->options([
-            ['value' => '', 'label' => 'Any'],
-            ['value' => '1', 'label' => 'Yes'],
-            ['value' => '0', 'label' => 'No'],
-        ]),
+        Radio::make('is_published')->label('Published')->inline()->ternary(),
     ])
     ->filtersIn('inline');
 ```
+
+`ternary()` takes the three labels, for a panel in another language:
+
+```php
+Radio::make('is_published')->ternary('Alle', 'Ja', 'Nein')
+```
+
+Like `boolean()`, it does nothing when `options()` was already called. It is the same as writing the options by hand:
+
+```php
+Radio::make('is_published')->label('Published')->inline()->options([
+    ['value' => '', 'label' => 'Any'],
+    ['value' => '1', 'label' => 'Yes'],
+    ['value' => '0', 'label' => 'No'],
+])
+```
+
+The hand-written form is the way to go when you need a fourth option or different values.
 
 What each choice does:
 
@@ -38,10 +50,12 @@ What each choice does:
 `"1"` and `"0"` match a boolean column on MySQL, MariaDB, SQLite and PostgreSQL, so no cast is needed.
 
 <Callout type="warn" title="Write the values as strings">
-Option values are cast to strings on the wire. `false` becomes `""`, which is the "Any" value, so `['value' => false, 'label' => 'No']` silently stops filtering. Use `'1'` and `'0'`.
+When you write the options yourself, note that option values are cast to strings on the wire. `false` becomes `""`, which is the "Any" value, so `['value' => false, 'label' => 'No']` silently stops filtering. Use `'1'` and `'0'`.
 </Callout>
 
 `Radio::boolean()` gives the Yes and No options without "Any". It is meant for forms; as a filter it has no way back to "don't filter" except Reset.
+
+In the Node package the method is the same: `s.radio("is_published").ternary()`.
 
 ## Select
 
@@ -84,13 +98,10 @@ Unlike the radio's empty option, `any` is a real value: it stays in the URL and 
 
 ```php
 ->filters([
-    Radio::make('verified')->label('Email verified')->inline()->options([
-        ['value' => '', 'label' => 'Any'],
-        ['value' => '1', 'label' => 'Yes'],
-        ['value' => '0', 'label' => 'No'],
-    ])->filterUsing(fn ($query, $value) => $value === '1'
-        ? $query->whereNotNull('email_verified_at')
-        : $query->whereNull('email_verified_at')),
+    Radio::make('verified')->label('Email verified')->inline()->ternary()
+        ->filterUsing(fn ($query, $value) => $value === '1'
+            ? $query->whereNotNull('email_verified_at')
+            : $query->whereNull('email_verified_at')),
 ])
 ```
 
