@@ -180,7 +180,7 @@ $s->richtext('body')->label('Body')->embeds([
 
 - **Validated twice.** The modal's Apply validates against the embed's fields on the server and shows errors in the modal. Saving the form validates every embed again, along with `maxEmbeds()` and unique ids, and reports a failure on the richtext field — per locale for a `translatable()` richtext.
 - **Unknown kinds are kept.** A block whose kind the field no longer declares renders as "Unknown block" and saves untouched; pasting it into a field that does not declare it drops it.
-- **Posted as is.** The document reaches `onSubmit()` untouched by the host's `TrimStrings` and `ConvertEmptyStringsToNull` middleware; embed data is cleaned like other input.
+- **Posted as is.** Those middleware would rewrite the editor state itself (a space before bold text lost, an empty `format` turned `null`), so the document reaches `onSubmit()` as the editor posted it. Each embed's `data` still goes through `TrimStrings` and `ConvertEmptyStringsToNull` like any other form input. Neither is sanitizing: validate and escape richtext the way you would any user input.
 - **No nesting.** A richtext with its own `embeds()` inside `Embed::fields()` throws, and `translatable()` on an embed field is ignored — the richtext is already the translated unit.
 - **Unique field names.** A `select`, `relation`, `upload` or `daterange` inside an embed must not share its name with a field of the form or of another embed; the page throws a `LogicException` when it renders.
 - A document holding only embeds is not empty, so `required()` passes.
