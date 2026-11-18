@@ -161,6 +161,29 @@ $s->radio('plan')->label('Plan')
 - **Int-backed enums still ship string values.** Cast the record value to a string (`'priority' => (string) $task->priority->value`), or radio, toggle buttons and checkbox lists show no selection.
 - The same enum can drive a [table badge](/docs/authoring/tables#badges) with `badge(Plan::class)`.
 
+## Stored secrets
+
+An API key or a token kept in an `encrypted` column must not go back to the browser, but the person editing the form still needs to see that one is set. `secret()` on a password field does both:
+
+```php
+$s->form('settings', [
+    $s->password('stripe_secret')
+        ->preview(fn (string $value): string => '…'.substr($value, -4)) // optional, implies secret()
+        ->clearable(),                                                   // optional, implies secret()
+    $s->password('smtp_password')->secret(),
+])
+    ->record($settings->only(['stripe_secret', 'smtp_password'])) // decrypted by the cast
+    ->onSubmit(function (ActionCtx $ctx) use ($settings) {
+        $settings->update($ctx->form); // an untouched secret is absent, so it is kept
+    });
+```
+
+- **The value never ships.** The field's key is dropped from the record data, so the value is in neither the page props nor the HTML. The page only learns whether a value is stored. `preview()` runs on the server and only its return value ships, so you decide how much of the secret to show. Without it, nothing of the value is shown.
+- **The form.** A stored secret renders as a masked "Set" row with **Replace**, which opens an empty input (**Cancel** goes back). With `clearable()` there is also **Clear**, which marks it "Will be cleared on save" (**Undo** goes back). With nothing stored, the field is a plain input saying "Not set".
+- **Submit.** A field left alone, or opened with Replace and left empty, is not sent, so `$ctx->form` has no key for it and `$model->update($ctx->form)` keeps the stored value. A replacement arrives as the new string. A clear arrives as `null`, and only on a `clearable()` field: elsewhere the server drops a `null` for the field, so a hand-made request or an MCP agent cannot wipe the secret by sending one.
+- **Rules.** `required()` holds while a stored secret is left alone and still applies to a replacement. A required secret is never clearable, even with `clearable()`. With nothing stored, `required()` works as on any field.
+- **Scope.** Top-level form fields, including those inside sections and tabs. On a repeater sub-field, or in a modal form loaded by `query()`, `secret()` throws when the form renders, because the value would ship in the row or the query data. A password field without `secret()` behaves as before: whatever `record()` holds for it ships in the props.
+
 ## Rich text with embedded blocks
 
 `richtext()->embeds()` lets editors drop structured blocks between paragraphs: a callout, a quote with an author, a product card. Each block kind is an `Embed` with an ordinary field list. Editors insert one from the slash menu ("Blocks") or the toolbar's "Block" button, and edit its data in a modal form:
