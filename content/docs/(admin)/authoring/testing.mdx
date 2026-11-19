@@ -32,6 +32,9 @@ it('creates a post', function () {
 - **Pest:** `tbtop()` is a global function the package autoloads; nothing to register.
 - **PHPUnit:** `use Tbtop\Admin\Testing\InteractsWithTbtop;` in the test case, then
   `$this->tbtop(Page::class)`.
+- **Values go out as the client sends them.** An enum as its value, a date as ISO 8601 with
+  its offset, a model as its key, and `submit()` posts JSON. So
+  `->fill(Post::factory()->make()->only(['title', 'status']))` works as is.
 - **No implicit login.** The tester acts as whoever `actingAs()` set — guests and roles
   are tested explicitly.
 - **Params** are the page path's route parameters; models are fine:
