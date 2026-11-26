@@ -1,0 +1,27 @@
+---
+title: "Upgrade to 0.9"
+description: "What to change in a host when moving from tbtop/admin 0.8 to 0.9.1: @inertiajs/react is now a peer dependency of the client."
+---
+
+0.9.1 is the first release of the 0.9 line; 0.9.0 was never published. It carries one breaking change, and most hosts need no step for it. The repository keeps the same steps in [UPGRADE.md](https://github.com/DiVotek/tbtop/blob/main/UPGRADE.md).
+
+Bump all packages in one change:
+
+```bash
+composer require tbtop/admin:__PINNED_VERSION__
+npm install --save-exact @tbtop/inertia-admin@__PINNED_VERSION__
+```
+
+## `@inertiajs/react` is a peer dependency of `@tbtop/inertia-admin`
+
+The client package used to list `@inertiajs/react` as its own dependency. It is now a peer dependency (`^3.3.1`), like `react` and `react-dom`: the host installs Inertia, and the admin uses the host's copy. One copy means one router, so the admin's links can no longer end up calling a second Inertia router that was never initialised.
+
+An Inertia React host already lists `@inertiajs/react` in its own `package.json` and needs no change. npm 7+, pnpm 8+ and bun install missing peers on their own. Yarn only warns, and older npm and pnpm do not install peers either: add it yourself there.
+
+```bash
+npm install @inertiajs/react   # or: yarn add @inertiajs/react
+```
+
+Keep `@inertiajs/react` in the Vite `resolve.dedupe` list if it is there already.
+
+The PHP package and the Node package `@tbtop/admin` do not depend on Inertia React and need nothing.

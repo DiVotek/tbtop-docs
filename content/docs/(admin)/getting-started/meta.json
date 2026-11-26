@@ -9,6 +9,7 @@
 		"resource-generator",
 		"deploy",
 		"versioning",
+		"upgrade-0-9",
 		"upgrade-0-8"
 	]
 }

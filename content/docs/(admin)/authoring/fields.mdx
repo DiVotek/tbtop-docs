@@ -364,6 +364,24 @@ $s->upload('photos')->label('Photos')
 
 The file is uploaded to a JSON endpoint as soon as it is picked, before the form submits. What reaches `$ctx->form['manual']` is the path string, such as `manuals/abc.pdf`, or an array of paths with `multiple()`. Defaults are the `public` disk, the `uploads` directory, public visibility and a 5 MiB limit; `maxSize()` is in bytes. A private file is shown back in the form through a short-lived signed URL. `saveUsing()` replaces the storage step entirely, which also skips the built-in SVG sanitizing and image conversion.
 
+### Cropping before upload
+
+`crop()` opens a crop dialog between picking an image and uploading it. The browser cuts out the selection and uploads only the result, so `convertTo()`, `quality()` and the size limit apply to the cropped image. The original is never stored, so an image cannot be re-cropped later.
+
+```php
+$s->upload('cover')->accept('image/*')->crop('16:9')->convertTo('webp'),
+$s->upload('avatar')->accept('image/*')->crop('1:1')->cropCircle(),
+$s->upload('photo')->accept('image/*')->crop(),                            // free selection
+$s->upload('hero')->accept('image/*')->cropAspects(['16:9', '4:3', 'free']),
+```
+
+An aspect is `'W:H'` with positive sides, or `'free'`. `cropAspects()` lets the editor switch between several, with the first one preselected. `cropCircle()` draws a round mask for avatars and defaults the aspect to `1:1`; the stored file stays rectangular, so round it with CSS where you show it.
+
+- With `multiple()` the dialog opens for each picked image in turn. Cancelling one skips that file, and the rest still upload.
+- Only JPEG, PNG and WebP open the dialog, and they keep their type. SVG, GIF, HEIC, AVIF, other files, and any image the browser fails to decode upload unchanged.
+- The aspect guides the editor in the browser and is not validation. To enforce it, add Laravel's `dimensions:ratio=16/9` rule.
+- Uploads made from inside the media picker do not crop.
+
 **`media`** picks from the panel's shared media library and submits the id of a row in the package's `tbtop_media` table (model `Tbtop\Admin\Media\Models\Media`). The migrations for that table ship with the package and run with your normal `php artisan migrate`.
 
 ```php
